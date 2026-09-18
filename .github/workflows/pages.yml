@@ -48,7 +48,11 @@ jobs:
 
       - name: Build
         id: build
-        uses: esphome/build-action@v7.0.0
+        # v8.x, not v7: v7 carried a hardcoded chip-family map that stopped at
+        # the C6, so the ESP32-C5 compiled fine and then failed at manifest
+        # generation with "Unsupported chip family: ESP32C5". v8 reads
+        # ESPHome's own VARIANT_FRIENDLY map instead, which knows the C5.
+        uses: esphome/build-action@v8.1.0
         with:
           yaml-file: firmware/${{ matrix.slug }}.yaml
           version: ${{ env.ESPHOME_VERSION }}
