@@ -1,0 +1,32 @@
+# Adoption package for esp32s3. A device flashed with the prebuilt firmware points
+# dashboard_import at this file, so "Adopt" in the ESPHome dashboard produces a
+# config that pulls the proxy from GitHub rather than inlining 300 lines.
+#
+# Once adopted, this is where you add what a prebuilt binary could not carry:
+#
+#   bluetooth_proxy:
+#     irks:
+#       - !secret ble_irk_phone_1        # your phones and watches
+#     mac_allowlist:
+#       - "AA:BB:CC:DD:EE:01"            # tags you track
+#     manufacturer_blocklist: [0x004C]   # ONLY once irks: is populated, or you
+#     allow_homekit: true                # will drop your own iPhones too
+#     allow_findmy: {rssi: -85}
+#
+# See docs/filtering.md before enabling the Apple blocklist.
+
+packages:
+  proxy: !include proxy-core.yaml
+
+esp32:
+  variant: esp32s3
+  flash_size: 4MB
+  watchdog_timeout: 10s
+  framework:
+    type: esp-idf
+    advanced:
+      compiler_optimization: PERF
+    sdkconfig_options:
+      CONFIG_BT_BLE_42_FEATURES_SUPPORTED: y
+      CONFIG_BT_BLE_50_FEATURES_SUPPORTED: y
+      CONFIG_ESP_COEX_SW_COEXIST_ENABLE: y

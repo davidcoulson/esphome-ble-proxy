@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BLE Proxy Config Generator</title>
-<meta name="description" content="Answer a few questions, get a filtering ESPHome Bluetooth proxy config.">
+<title>ESPHome BLE Proxy</title>
+<meta name="description" content="Flash a filtering ESPHome Bluetooth proxy straight from your browser, or generate the config yourself.">
 <style>
 :root{
   --bg:#f7f7f5; --panel:#fff; --ink:#1a1a17; --muted:#6b6b63; --line:#e2e2dc;
@@ -83,6 +83,37 @@ pre.out{margin:0;background:var(--code-bg);border:1px solid var(--line);border-r
 .steps{margin:0;padding-left:20px;font-size:13.5px;line-height:1.65}
 .steps li{margin-bottom:9px}
 .steps code{background:var(--code-bg);padding:1px 5px;border-radius:4px;font-size:12.5px}
+/* ── top-level mode switch ── */
+.modeswitch{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.modeswitch button{flex:1;min-width:200px;text-align:left;padding:10px 14px;border:1px solid var(--line);
+  background:var(--bg);color:var(--muted);border-radius:var(--radius);font:inherit;cursor:pointer}
+.modeswitch button b{display:block;font-size:14px;color:var(--ink)}
+.modeswitch button em{font-style:normal;font-size:12.5px}
+.modeswitch button[aria-pressed=true]{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+.modeswitch button[aria-pressed=true] b,.modeswitch button[aria-pressed=true] em{color:var(--accent-ink)}
+
+/* ── quick pane ── */
+#quickpane{max-width:760px;margin:0 auto;padding:22px 20px 60px}
+.qwrap{display:flex;flex-direction:column;gap:16px}
+.panel.accent{border-color:var(--accent)}
+.qh{margin:0 0 12px;font-size:15px;letter-spacing:-.01em}
+.qnote{margin:0 0 10px;color:var(--muted);font-size:13.5px;line-height:1.6}
+.qnote:last-child{margin-bottom:0}
+.qnote b{color:var(--ink)}
+.qnote code{background:var(--code-bg);padding:1px 5px;border-radius:4px;font-size:12.5px}
+.qwarn{display:block;color:var(--warn);font-size:13.5px;line-height:1.6}
+.qlist{margin:0;padding-left:20px;color:var(--muted);font-size:13.5px;line-height:1.6}
+.qlist li{margin-bottom:8px}
+.qlist b{color:var(--ink)}
+.btn.big{padding:11px 20px;font-size:14.5px}
+.boardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.boardgrid button{text-align:left;padding:10px 12px;border:1px solid var(--line);background:var(--bg);
+  color:var(--ink);border-radius:8px;font:inherit;cursor:pointer}
+.boardgrid button:hover{border-color:var(--accent)}
+.boardgrid button[aria-pressed=true]{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+.boardgrid button b{display:block;font-size:13.5px;font-weight:600}
+.boardgrid button em{font-style:normal;font-size:12px;color:var(--muted)}
+.boardgrid button[aria-pressed=true] em{color:var(--accent-ink);opacity:.85}
 footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);font-size:12.5px}
 .copied{color:var(--ok);font-size:12.5px;font-weight:600}
 </style>
@@ -90,13 +121,111 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
 <body>
 
 <header><div class="in">
-  <h1>ESPHome BLE Proxy — config generator</h1>
-  <p>Builds a Bluetooth proxy config that <b>filters advertisements on the device</b>, before they
-  cross your network. Answer what you know, ignore the rest — the defaults are the ones running on a
-  ~70-node fleet. <a href="https://github.com/davidcoulson/esphome-ble-proxy">Repo &amp; docs →</a></p>
+  <h1>ESPHome BLE Proxy</h1>
+  <p>A Bluetooth proxy that <b>filters advertisements on the device</b>, before they cross your
+  network. Flash one from this page, or generate the config yourself — the defaults are the ones
+  running on a ~70-node fleet.
+  <a href="https://github.com/davidcoulson/esphome-ble-proxy">Repo &amp; docs →</a></p>
+
+  <div class="modeswitch" role="group" aria-label="Mode">
+    <button type="button" data-top="quick" aria-pressed="true">
+      <b>Quick flash</b><em>Plug in a board, click, done. No YAML.</em></button>
+    <button type="button" data-top="advanced" aria-pressed="false">
+      <b>Advanced</b><em>Generate the YAML and build it yourself.</em></button>
+  </div>
 </div></header>
 
-<main>
+<!-- ─────────────────────────── QUICK ─────────────────────────── -->
+<section id="quickpane">
+  <div class="qwrap">
+
+    <div class="panel">
+      <h2 class="qh">1 · Pick your board</h2>
+      <div class="boardgrid" id="fwboards"></div>
+      <p class="qnote" id="nofw" hidden></p>
+    </div>
+
+    <div class="panel">
+      <h2 class="qh">2 · Plug it in over USB and flash</h2>
+      <div id="flashwrap">
+        <esp-web-install-button id="installer">
+          <button slot="activate" class="btn primary big">Connect &amp; install</button>
+          <span slot="unsupported" class="qwarn">
+            Your browser can't talk to serial ports. Use <b>Chrome</b> or <b>Edge</b> on a desktop —
+            Safari and Firefox don't implement Web Serial, and neither does any browser on iOS.
+          </span>
+          <span slot="not-allowed" class="qwarn">
+            This page has to be served over HTTPS to access the serial port.
+          </span>
+        </esp-web-install-button>
+      </div>
+      <p class="qnote">
+        Hold <b>BOOT</b> while plugging in if the board isn't offered in the port list — some need it
+        to enter download mode. Picking the wrong port is harmless; nothing is written until you
+        confirm.
+      </p>
+    </div>
+
+    <div class="panel">
+      <h2 class="qh">3 · Give it your Wi-Fi</h2>
+      <p class="qnote">
+        When the flash finishes the installer offers to connect the device to Wi-Fi and asks for your
+        network and password. That is <b>Improv</b> — the credentials go straight down the USB cable
+        you already have plugged in. Nothing is typed into this page and nothing leaves your machine.
+      </p>
+      <p class="qnote" id="ethnote" hidden>
+        <b>This board is Ethernet.</b> There is no Wi-Fi step — plug in the cable and it picks up an
+        address by DHCP.
+      </p>
+      <p class="qnote">
+        Then open <b>Settings → Devices &amp; Services</b> in Home Assistant. The proxy appears as a
+        discovered ESPHome device; adopt it and Home Assistant starts using it as a Bluetooth adapter
+        straight away. Nothing else to configure.
+      </p>
+    </div>
+
+    <div class="panel accent">
+      <h2 class="qh">One thing this firmware can't do for you</h2>
+      <p class="qnote">
+        Your phones are the noisiest thing on the air and the most useful thing to track. Filtering
+        them correctly needs their <b>IRKs</b> — and an IRK is baked in at compile time, so a
+        prebuilt binary can't have yours.
+      </p>
+      <p class="qnote">
+        That is also why <b>Apple filtering is switched off here</b>. On the fleet it removes ~69% of
+        all traffic, but it is only safe alongside a list of IRKs: an advertisement matching one is
+        marked protected and skips the payload filters. Turn it on without them and your own iPhones
+        and Watches get dropped along with everyone else's.
+      </p>
+      <p class="qnote">
+        The device you just flashed is <b>adoptable</b>. Open your own ESPHome dashboard, adopt it,
+        and you get a short config file pulling this project from GitHub — add your
+        <code>irks:</code> there and flash it over the air. No USB, no starting over.
+        <a href="https://github.com/davidcoulson/esphome-ble-proxy/blob/main/docs/filtering.md#getting-your-irks">How to get your IRKs →</a>
+      </p>
+    </div>
+
+    <div class="panel">
+      <h2 class="qh">What you get</h2>
+      <ul class="qlist">
+        <li><b>RSSI filtering</b> — a floor at −90 dBm and a threshold at −75, tunable live from Home
+          Assistant. No reflash.</li>
+        <li><b>Non-resolvable addresses dropped</b> — they rotate and carry no identity, so every
+          rotation looks like a new device. Tiles are exempted.</li>
+        <li><b>Pairing still works</b> — Matter commissioning, Improv and Nordic DFU bypass every
+          filter, because a device in pairing mode has no address you could allowlist in advance.</li>
+        <li><b>Scan profiles</b> — Balanced (37.5% duty) by default, because Wi-Fi and BLE share one
+          radio on most of these boards. Ethernet boards default to Aggressive.</li>
+        <li><b>Counters</b> — forwarded, dropped, and a drop-rate percentage, so tuning is measured
+          rather than guessed.</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────────────────────── ADVANCED ─────────────────────────── -->
+<main id="advancedpane" hidden>
 
 <!-- ─────────────────────────── FORM ─────────────────────────── -->
 <form class="panel" id="f" autocomplete="off">
@@ -271,6 +400,9 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
   <a href="https://github.com/davidcoulson/esphome-bluetooth-proxy-filter">the filter fork</a>
 </footer>
 
+<script type="module"
+  src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js"></script>
+
 <script>
 (function(){
 "use strict";
@@ -280,24 +412,24 @@ var MIN_ESPHOME = "2026.9.0";
 var IDF = "6.1.0";
 
 var BOARDS = {
-  "eth-waveshare": {variant:"esp32s3", eth:true, ethPins:"waveshare", family:"esp32-eth-ble.yaml",
+  "eth-waveshare": {fw:"esp32s3-eth-waveshare", short:"ESP32-S3 + W5500", sub:"Waveshare ESP32-S3-ETH", variant:"esp32s3", eth:true, ethPins:"waveshare", family:"esp32-eth-ble.yaml",
     prefix:"ble-esp32-eth", proj:"ble-proxy-eth", flash:"16MB", slots:5, prof:"Aggressive",
     hint:"Wired uplink, no WiFi, no radio contention. The best proxy hardware here."},
-  "eth-xiao": {variant:"esp32s3", eth:true, ethPins:"xiao", family:"esp32-eth-ble.yaml",
+  "eth-xiao": {fw:"esp32s3-eth-xiao", short:"ESP32-S3 + W5500", sub:"XIAO wiring, no reset pin", variant:"esp32s3", eth:true, ethPins:"xiao", family:"esp32-eth-ble.yaml",
     prefix:"ble-esp32-eth", proj:"ble-proxy-eth", flash:"16MB", slots:5, prof:"Aggressive",
     hint:"Same, but the XIAO's W5500 wiring differs from the Waveshare board and has no reset line."},
-  "c5": {variant:"esp32c5", family:null, prefix:"esp32c5", proj:"ble-esp32c5", flash:"4MB",
+  "c5": {fw:"esp32c5", short:"ESP32-C5", sub:"5 GHz capable", variant:"esp32c5", family:null, prefix:"esp32c5", proj:"ble-esp32c5", flash:"4MB",
     cpu:"240MHZ", band:true, prof:"Aggressive",
     hint:"The only board here with a 5 GHz radio — which is how it escapes the WiFi/BLE contention."},
-  "s3": {variant:"esp32s3", family:"esp32s3-ble.yaml", prefix:"ble-esp32s3", proj:"ble-proxy-esp32s3",
+  "s3": {fw:"esp32s3", short:"ESP32-S3", sub:"Wi-Fi", variant:"esp32s3", family:"esp32s3-ble.yaml", prefix:"ble-esp32s3", proj:"ble-proxy-esp32s3",
     prof:"Balanced", hint:"Dual core, so BLE and WiFi aren't fighting for one CPU. A good, boring proxy."},
-  "esp32": {variant:"esp32", family:"shelly-ble.yaml", prefix:"shelly", proj:"ble-shelly-esp32",
+  "esp32": {fw:"esp32", short:"ESP32 classic", sub:"incl. reflashed Shelly", variant:"esp32", family:"shelly-ble.yaml", prefix:"shelly", proj:"ble-shelly-esp32",
     cpu:"160MHz", unicore:true, prof:"Balanced",
     hint:"Classic ESP32. BLE 4.2 only — fine for proxying, it's all Bermuda needs."},
-  "c6": {variant:"esp32c6", family:null, prefix:"xiao", proj:"ble-xiao-esp32c6", flash:"4MB",
+  "c6": {fw:"esp32c6", short:"ESP32-C6", sub:"incl. XIAO C6", variant:"esp32c6", family:null, prefix:"xiao", proj:"ble-xiao-esp32c6", flash:"4MB",
     coex:true, ax:true, prof:"Balanced",
     hint:"Single core, one radio shared with WiFi. WiFi 6 capable, which shortens airtime per frame."},
-  "c3": {variant:"esp32c3", family:null, prefix:"ble-c3", proj:"ble-esp32c3", flash:"4MB",
+  "c3": {fw:"esp32c3", short:"ESP32-C3 / ESP8685", sub:"single radio", variant:"esp32c3", family:null, prefix:"ble-c3", proj:"ble-esp32c3", flash:"4MB",
     coex:true, prof:"Balanced",
     hint:"Single core, one radio. Must run Balanced — at 75% duty this starved WiFi enough to break OTA."},
   "rrn00": {variant:"esp32c3", family:"rrn00.yaml", prefix:"esp8685-rrn00", proj:"ble-rrn00",
@@ -1138,9 +1270,57 @@ $("dl").addEventListener("click", function(){
   setTimeout(function(){ URL.revokeObjectURL(a.href); document.body.removeChild(a); }, 0);
 });
 
+/* ───── quick mode ───── */
+var QUICK_ORDER = ["eth-waveshare","eth-xiao","c5","s3","esp32","c6","c3"];
+var quickBoard = "s3";
+
+function buildBoardGrid(){
+  var grid = $("fwboards");
+  grid.innerHTML = "";
+  QUICK_ORDER.forEach(function(key){
+    var b = BOARDS[key];
+    if (!b || !b.fw) return;
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.key = key;
+    btn.setAttribute("aria-pressed", String(key === quickBoard));
+    btn.innerHTML = "<b>"+esc(b.short)+"</b><em>"+esc(b.sub)+"</em>";
+    btn.addEventListener("click", function(){ quickBoard = key; renderQuick(); });
+    grid.appendChild(btn);
+  });
+}
+
+function renderQuick(){
+  var b = BOARDS[quickBoard];
+  Array.prototype.forEach.call($("fwboards").children, function(btn){
+    btn.setAttribute("aria-pressed", String(btn.dataset.key === quickBoard));
+  });
+  // Relative path: the firmware is published alongside this page by the same
+  // Pages deploy, so this works locally and on github.io without a base URL.
+  $("installer").setAttribute("manifest", "firmware/" + b.fw + "/manifest.json");
+  $("ethnote").hidden = !b.eth;
+}
+
+/* ───── top-level mode ───── */
+function setTop(which){
+  $("quickpane").hidden = (which !== "quick");
+  $("advancedpane").hidden = (which !== "advanced");
+  document.querySelectorAll(".modeswitch button").forEach(function(x){
+    x.setAttribute("aria-pressed", String(x.dataset.top === which));
+  });
+  try { history.replaceState(null, "", which === "quick" ? "#quick" : "#advanced"); } catch(e){}
+  if (which === "advanced") render();
+}
+document.querySelectorAll(".modeswitch button").forEach(function(btn){
+  btn.addEventListener("click", function(){ setTop(btn.dataset.top); });
+});
+
+buildBoardGrid();
+renderQuick();
 fillModules();
 $("profile").value = BOARDS[$("board").value].prof || "Balanced";
 render();
+setTop(location.hash === "#advanced" ? "advanced" : "quick");
 })();
 </script>
 </body>

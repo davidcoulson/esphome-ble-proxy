@@ -1,0 +1,21 @@
+# Buildable firmware for esp32 — this is what CI compiles and the web flasher
+# installs. It is the adoption package plus the one thing that package must not
+# contain: the dashboard_import pointer back to itself.
+#
+# Do not add configuration here. Anything real belongs in
+# config/adopt/esp32.yaml so that a device adopted into someone's own ESPHome
+# dashboard gets it too.
+
+substitutions:
+  name: ble-proxy-esp32
+  friendly_name: BLE Proxy
+
+packages:
+  device: !include ../config/adopt/esp32.yaml
+
+dashboard_import:
+  # Makes a flashed device show up as adoptable in any ESPHome dashboard on the
+  # network. Adopting writes a short device file that pulls this package from
+  # GitHub — which is how you get from "flashed a binary" to "can add my IRKs".
+  package_import_url: github://davidcoulson/esphome-ble-proxy/config/adopt/esp32.yaml@main
+  import_full_config: false

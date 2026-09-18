@@ -1,10 +1,12 @@
-name: Deploy wizard to GitHub Pages
+name: Build firmware and deploy wizard
 
 on:
   push:
     branches: [main]
     paths:
       - 'wizard/**'
+      - 'firmware/**'
+      - 'config/adopt/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -17,19 +19,97 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  # Pinned deliberately, matching `min_version` in config/adopt/proxy-core.yaml
+  # and the version the fleet runs. Bump both together — and re-sync the
+  # bluetooth_proxy fork when you do (docs/upgrading.md).
+  ESPHOME_VERSION: "2026.9.0"
+
 jobs:
+  # Every board is compiled on every deploy. The deploy job publishes the whole
+  # site in one shot, so a partial build would silently drop firmware that is
+  # already live — there is no incremental publish to fall back on.
+  build:
+    name: ${{ matrix.slug }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        slug:
+          - esp32
+          - esp32c3
+          - esp32c5
+          - esp32c6
+          - esp32s3
+          - esp32s3-eth-waveshare
+          - esp32s3-eth-xiao
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        id: build
+        uses: esphome/build-action@v7.0.0
+        with:
+          yaml-file: firmware/${{ matrix.slug }}.yaml
+          version: ${{ env.ESPHOME_VERSION }}
+          # ESP Web Tools needs the full manifest (chipFamily, parts, offsets),
+          # not the partial one intended for release aggregation.
+          complete-manifest: true
+          release-summary: >-
+            Filtering BLE proxy for Home Assistant. Wi-Fi is set up over Improv
+            from the browser; RSSI threshold and scan profile are tunable from
+            Home Assistant without reflashing.
+          release-url: https://github.com/davidcoulson/esphome-ble-proxy
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: fw-${{ matrix.slug }}
+          # The action writes into a folder named after the device plus its
+          # chip variant, which it reports as the `name` output.
+          path: ${{ steps.build.outputs.name }}
+          if-no-files-found: error
+
   deploy:
+    needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download firmware
+        uses: actions/download-artifact@v4
+        with:
+          pattern: fw-*
+          path: artifacts
+
+      - name: Assemble site
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          cp -r wizard/. site/
+          # artifacts/fw-<slug>/... -> site/firmware/<slug>/...
+          # manifest.json references its binaries by bare filename, so the
+          # manifest and the .bin must stay in the same directory.
+          for dir in artifacts/fw-*; do
+            slug="${dir#artifacts/fw-}"
+            mkdir -p "site/firmware/$slug"
+            cp -r "$dir"/. "site/firmware/$slug/"
+            # The .elf is debug symbols — useful for decoding a backtrace, but
+            # several MB per board and nothing the flasher reads.
+            rm -f site/firmware/$slug/*.elf
+            test -f "site/firmware/$slug/manifest.json" \
+              || { echo "::error::no manifest.json for $slug"; exit 1; }
+          done
+          echo "--- published firmware ---"
+          find site/firmware -type f | sort
+          du -sh site
+
       - uses: actions/configure-pages@v5
-      # The wizard is a single static file with no build step and no
-      # dependencies, so the directory is uploaded as-is.
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: wizard
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4

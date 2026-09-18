@@ -1,35 +1,70 @@
-# The config wizard
+# The wizard
 
-A single static `index.html` — no build step, no dependencies, no network calls.
-Nothing you type in it leaves the browser.
+A single static `index.html` — no build step, no framework. Two modes:
+
+**Quick flash** — pick a board, install prebuilt firmware over Web Serial, hand
+it your Wi-Fi over Improv. Nothing you type goes anywhere except down the USB
+cable. Loads [ESP Web Tools](https://github.com/esphome/esp-web-tools) (pinned,
+from unpkg) for the install button; everything else is inline.
+
+**Advanced** — the config generator. Two outputs:
+
+- *Standalone*: one self-contained device YAML with the proxy, the filter
+  config, the scan profiles and all the diagnostic entities inline. Needs
+  nothing else from this repo.
+- *Uses `common/` packages*: a short device file including the shared packages,
+  with per-device overrides only where your answers differ from the defaults.
+
+Plus a matching `secrets.yaml` stub and a next-steps checklist that warns on the
+combinations that bite — no IRKs, an Aggressive profile on a shared radio, a
+threshold tight enough to blind the tracker.
 
 **Live:** https://davidcoulson.github.io/esphome-ble-proxy/
+Deep links: `#quick`, `#advanced`.
 
-**Locally:** open `index.html` in a browser. That's it.
+## Running it locally
 
-Deployed by `.github/workflows/pages.yml`, which uploads this directory as the
-Pages site root on any push to `main` that touches it.
+Open `index.html` in a browser and the Advanced mode works immediately.
 
-## What it generates
+Quick flash will not: the install button needs `firmware/<slug>/manifest.json`
+next to the page, and those binaries are produced by CI, not committed. To try
+it locally, build one and drop it in place:
 
-Two output modes:
+```bash
+esphome compile firmware/esp32s3.yaml
+```
 
-- **Standalone** — one self-contained device YAML with the proxy, the filter
-  config, the scan profiles and all the diagnostic entities inline. Needs
-  nothing else from this repo. This is the one to use when setting up a proxy
-  from scratch.
-- **Uses `common/` packages** — a short device file that includes the shared
-  packages from `config/common/`, plus per-device overrides only where the
-  answers differ from the package defaults. For adding to an existing fleet.
+Web Serial also needs a secure context — `localhost` counts, `file://` does not,
+so serve the directory rather than opening the file.
 
-Plus a matching `secrets.yaml` stub and a next-steps checklist.
+## How the firmware gets there
 
-## Editing it
+`.github/workflows/pages.yml` compiles every config in `firmware/` with
+`esphome/build-action`, then assembles the Pages site as `wizard/` plus
+`firmware/<slug>/` per board. The manifest and its `.bin` must stay in the same
+directory — the manifest references binaries by bare filename.
 
-Board definitions are the `BOARDS` object near the top of the `<script>`. Each
-entry drives the variant, flash size, family package, sdkconfig flags, default
-scan profile and the hint text. Adding a board is one object entry.
+Every board is rebuilt on every deploy. The deploy publishes the whole site at
+once, so a partial build would silently drop firmware that is already live.
 
-The generated YAML keeps the rationale comments from `config/common/` — that is
-deliberate. Someone who generates a config and never reads the docs should still
-learn why passive scanning is passive and why `batch_delay` won't help them.
+## Adding a board
+
+1. `config/adopt/<slug>.yaml` — the real configuration, including
+   `!include proxy-core.yaml`. Keep it **secret-free**: it doubles as the
+   `dashboard_import` target, and someone adopting the device will not have your
+   `!secret` keys.
+2. `firmware/<slug>.yaml` — the adoption package plus `dashboard_import`.
+   Device name must be ≤17 characters (24-char hostname cap, minus the 7-char
+   MAC suffix `name_add_mac_suffix` appends).
+3. Add the slug to the matrix in `.github/workflows/pages.yml`.
+4. Add an entry to `BOARDS` in `index.html` with `fw`, `short` and `sub`, and
+   list its key in `QUICK_ORDER`.
+
+`BOARDS` drives both modes: variant, flash size, family package, sdkconfig
+flags, default scan profile and hint text all come from that one object.
+
+## A note on the generated YAML
+
+It keeps the rationale comments from `config/common/`. That is deliberate —
+someone who generates a config and never opens the docs should still find out
+why scanning is passive and why `batch_delay` will not help them.

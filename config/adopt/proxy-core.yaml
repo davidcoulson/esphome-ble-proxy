@@ -1,0 +1,326 @@
+# =============================================================================
+# The shared guts of a "quick flash" BLE proxy.
+#
+# Used twice:
+#   1. by firmware/*.yaml, to build the prebuilt binaries the web flasher installs
+#   2. as the dashboard_import target, so a flashed device can be ADOPTED into
+#      someone's own ESPHome dashboard and rebuilt from source
+#
+# Because of (2) this file must stay SECRET-FREE and self-contained. It cannot
+# reference !secret ble_pet_tag_macs or the ble_irk_* keys the way
+# config/common/ble-proxy.yaml does — the person adopting it does not have them,
+# and adoption would fail on the first build.
+#
+# THAT IS ALSO WHY THE APPLE FILTER IS OFF HERE. See the bluetooth_proxy block.
+# =============================================================================
+
+substitutions:
+  name: ble-proxy
+  friendly_name: BLE Proxy
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: true
+  min_version: 2026.9.0
+  project:
+    name: dcoulson.ble-proxy
+    version: "1.0.0"
+
+logger:
+  level: WARN
+  # NOT baud_rate: 0, unlike the rest of the fleet. improv_serial shares the
+  # logger's serial port, so disabling the UART would disable Wi-Fi
+  # provisioning — which is the entire point of this firmware.
+  baud_rate: 115200
+
+api:
+  # No encryption key: this is a generic binary, so there is nothing to
+  # pre-share. Home Assistant generates one when the device is adopted.
+  reboot_timeout: 0s
+  batch_delay: 500ms
+  on_client_connected:
+    - if:
+        condition:
+          lambda: 'return id(sel_ble_scan_profile).current_option() != "Disabled";'
+        then:
+          - esp32_ble_tracker.start_scan:
+              continuous: true
+  on_client_disconnected:
+    # Nothing is listening, so don't burn airtime scanning.
+    if:
+      condition:
+        not:
+          api.connected:
+      then:
+        - esp32_ble_tracker.stop_scan:
+
+ota:
+  - platform: esphome
+    on_begin:
+      # Frees the radio for the transfer. Cannot rescue a device that will not
+      # accept OTA at all — on_begin only fires once the connection exists, and
+      # a BLE-saturated radio is what stops it existing. Use safe mode for that.
+      then:
+        - esp32_ble_tracker.stop_scan:
+
+# No ssid/password: credentials arrive over Improv (serial, from the web
+# flasher) or through the fallback hotspot below.
+wifi:
+  power_save_mode: NONE
+  reboot_timeout: 5min
+  ap:
+    ssid: "${friendly_name} Setup"
+
+captive_portal:
+
+# This is what lets the browser hand the device your Wi-Fi credentials over the
+# same USB cable it just flashed it with.
+improv_serial:
+
+mdns:
+safe_mode:
+web_server:
+  version: 2
+  local: true
+
+button:
+  - platform: restart
+    name: "Restart"
+  - platform: safe_mode
+    # Boots WITHOUT BLE — how you flash a board whose radio is too busy for OTA.
+    name: "Safe Mode"
+  - platform: factory_reset
+    name: "Factory Reset"
+    entity_category: config
+
+text_sensor:
+  - platform: version
+    name: "ESPHome Version"
+    entity_category: diagnostic
+
+# >> RE-SYNC THIS FORK ON EVERY ESPHOME VERSION BUMP. <<
+external_components:
+  - source:
+      type: git
+      url: https://github.com/davidcoulson/esphome-bluetooth-proxy-filter
+      ref: v1.5.0
+    components: [bluetooth_proxy]
+    refresh: 1min
+
+esp32_ble:
+  max_connections: 3
+
+esp32_ble_tracker:
+  id: ble_tracker
+  scan_parameters:
+    # Started by the api: block above when Home Assistant connects.
+    continuous: false
+    # PASSIVE. Active scanning transmits a scan request per advertiser, costing
+    # TX airtime on a shared radio and inflating every forwarded packet. RSSI is
+    # all a tracker needs. Trade-off: names carried only in a scan response are
+    # lost, so use the onboarding switch when adding a new BLE device.
+    active: false
+    interval: 320ms
+    window: 120ms   # 37.5% duty — see the scan profile select below
+
+bluetooth_proxy:
+  id: ble_proxy
+  active: true
+  # Compile-time fallback; the "BLE RSSI Threshold" number restores on boot and
+  # overwrites it, so this is tunable from Home Assistant without reflashing.
+  rssi_threshold: -75
+  # Absolute reception limit. Below this an RSSI carries no usable distance
+  # information — forwarding it misleads a tracker rather than helping it.
+  rssi_floor: -90
+  # Rotating addresses that carry no identity at all: not even an IRK can
+  # resolve them, and every rotation looks like a new device. Tiles are the
+  # notable exception and are rescued by the service UUIDs below.
+  drop_non_resolvable: true
+
+  # ---------------------------------------------------------------------------
+  # DELIBERATELY ABSENT: manufacturer_blocklist, irks, mac_allowlist.
+  #
+  # The fleet blocks Apple (0x004C), which is ~69% of BLE traffic. That is safe
+  # THERE because the fleet also lists its own phones' IRKs: an advertisement
+  # whose resolvable private address matches an IRK is marked protected, and a
+  # protected advertisement skips the payload filters entirely.
+  #
+  # A prebuilt binary cannot contain your IRKs. Enabling the Apple blocklist
+  # without them would drop YOUR OWN iPhones and Watches along with everyone
+  # else's — they advertise Apple manufacturer data, nothing would protect them,
+  # and Home Assistant would stop seeing them at all.
+  #
+  # So: flash this, then ADOPT the device in your own ESPHome dashboard, add
+  # your irks: and mac_allowlist:, and re-flash over the air. Details:
+  # https://github.com/davidcoulson/esphome-ble-proxy/blob/main/docs/filtering.md
+  # ---------------------------------------------------------------------------
+
+  # Service UUIDs that bypass every filter including the RSSI threshold. These
+  # exist for devices whose address CANNOT be known ahead of time — a device in
+  # pairing mode, or a Tile, advertises from a rotating private address, so no
+  # mac_allowlist entry could ever cover it.
+  service_uuid_allowlist:
+    - 0xFFF6                                   # Matter commissioning
+    - "00467768-6228-2272-4663-277478268000"   # Improv Wi-Fi
+    - 0xFE59                                   # Nordic DFU (nRF52 tags in bootloader)
+    - 0xFEED                                   # Tile
+    - 0xFEEC                                   # Tile, not yet claimed
+  # Bound by the floor rather than the threshold: a weak Tile reading here is
+  # exactly what places it nearer another proxy.
+  rssi_service_uuid: -90
+
+switch:
+  # ONBOARDING SWITCH. Scanning is passive, which drops scan responses — and a
+  # great many BLE devices put their local name ONLY in the scan response. Home
+  # Assistant discovers new BLE devices by name, so with passive scanning a
+  # brand-new device may never be discoverable at all. Flip this on, add the
+  # device, flip it off.
+  #
+  # Deliberately NOT restore_value: a reboot must return to passive, so an
+  # accidental leave-on cannot quietly cost airtime for weeks.
+  - platform: template
+    name: "BLE Active Scan (onboarding)"
+    id: sw_ble_active_scan
+    icon: mdi:bluetooth-audio
+    entity_category: config
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: 'id(ble_tracker).set_scan_active(true);'
+      - esp32_ble_tracker.stop_scan:
+      - delay: 200ms
+      - esp32_ble_tracker.start_scan: {continuous: true}
+    turn_off_action:
+      - lambda: 'id(ble_tracker).set_scan_active(false);'
+      - esp32_ble_tracker.stop_scan:
+      - delay: 200ms
+      - esp32_ble_tracker.start_scan: {continuous: true}
+
+number:
+  - platform: template
+    name: "BLE RSSI Threshold"
+    id: num_ble_rssi_threshold
+    icon: mdi:signal-distance-variant
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: -75
+    # Bottom pinned to rssi_floor: the floor already discards everything below
+    # it, so a lower setting would be dead travel on the dial.
+    min_value: -90
+    max_value: -40
+    step: 1
+    unit_of_measurement: dBm
+    mode: box
+    # on_value, NOT set_action: TemplateNumber::setup() restores by calling
+    # publish_state() and never control(), so set_action would not fire on boot
+    # and the restored value would display while the proxy kept the YAML default.
+    on_value:
+      - lambda: 'id(ble_proxy).set_rssi_threshold((int8_t) x);'
+
+sensor:
+  - platform: uptime
+    id: uptime_sec
+    update_interval: 60s
+  - platform: internal_temperature
+    name: "Internal Temperature"
+    entity_category: diagnostic
+
+  # Free-running uint32 counters in the fork; these report the delta since the
+  # last update so they graph as a rate. Unsigned subtraction stays correct
+  # across the rollover, so nothing needs resetting.
+  - platform: template
+    name: "BLE Adverts Forwarded"
+    unit_of_measurement: "adv/min"
+    state_class: measurement
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:bluetooth-transfer
+    update_interval: 60s
+    lambda: |-
+      static uint32_t last = 0;
+      uint32_t now = id(ble_proxy).get_adv_forwarded();
+      uint32_t delta = now - last;
+      last = now;
+      return (float) delta;
+
+  - platform: template
+    name: "BLE Adverts Dropped"
+    unit_of_measurement: "adv/min"
+    state_class: measurement
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:bluetooth-off
+    update_interval: 60s
+    lambda: |-
+      static uint32_t last = 0;
+      uint32_t now = id(ble_proxy).get_adv_dropped();
+      uint32_t delta = now - last;
+      last = now;
+      return (float) delta;
+
+  # The tuning number: what fraction of what this proxy hears is suppressed.
+  # Returns NAN (unknown) rather than 0 when nothing was heard at all, so an
+  # idle proxy is not misreported as a 0% drop rate.
+  - platform: template
+    name: "BLE Advert Drop Rate"
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    icon: mdi:filter-variant
+    update_interval: 60s
+    lambda: |-
+      static uint32_t last_f = 0, last_d = 0;
+      uint32_t f = id(ble_proxy).get_adv_forwarded();
+      uint32_t d = id(ble_proxy).get_adv_dropped();
+      uint32_t df = f - last_f, dd = d - last_d;
+      last_f = f; last_d = d;
+      uint32_t total = df + dd;
+      if (total == 0) return NAN;
+      return (100.0f * dd) / total;
+
+select:
+  - platform: template
+    name: "BLE Scan Profile"
+    id: sel_ble_scan_profile
+    icon: mdi:speedometer
+    optimistic: true
+    restore_value: true
+    initial_option: "Balanced"
+    options: ["Insane", "Aggressive", "Balanced", "Disabled"]
+    set_action:
+      - lambda: |-
+          // UNITS: these setters take raw BLE controller units of 0.625ms, NOT
+          // milliseconds. scan_parameters above IS in ms and is converted at
+          // codegen; a literal here is not. ms / 0.625 = units.
+          auto opt = id(sel_ble_scan_profile).current_option();
+          if (opt == "Insane") {
+            id(ble_tracker).set_scan_interval(1760);  // 1100ms
+            id(ble_tracker).set_scan_window(1760);    // 1100ms -> 100%
+            id(ble_tracker).set_scan_active(false);
+          } else if (opt == "Aggressive") {
+            id(ble_tracker).set_scan_interval(512);   // 320ms
+            id(ble_tracker).set_scan_window(480);     // 300ms -> 94%
+            id(ble_tracker).set_scan_active(false);
+          } else if (opt == "Balanced") {
+            id(ble_tracker).set_scan_interval(512);   // 320ms
+            id(ble_tracker).set_scan_window(192);     // 120ms -> 37.5%
+            id(ble_tracker).set_scan_active(false);
+          }
+      - if:
+          condition:
+            lambda: 'return id(sel_ble_scan_profile).current_option() == "Disabled";'
+          then:
+            # Actually stop the radio. A tiny window still scans and forwards.
+            - esp32_ble_tracker.stop_scan:
+          else:
+            # The setters only take effect when a scan next starts, and
+            # start_scan_() early-returns unless the scanner is IDLE, so this
+            # only fires when coming back from "Disabled".
+            - if:
+                condition:
+                  lambda: 'return !id(ble_tracker).scan_running();'
+                then:
+                  - esp32_ble_tracker.start_scan: {continuous: true}

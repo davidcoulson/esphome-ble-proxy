@@ -1,7 +1,7 @@
 # esphome-ble-proxy
 
 The ESPHome Bluetooth proxy fleet — configuration, the reasoning behind it, and
-a wizard that writes you a config.
+a browser flasher so you can have one running without reading any of it.
 
 Roughly 70 nodes feed Bluetooth advertisements into Home Assistant here, where
 [Bermuda](https://github.com/agittins/bermuda) turns them into room-level
@@ -10,8 +10,9 @@ that in four lines — it is that they **filter on-device**, before a packet eve
 crosses the network. A stock proxy forwards every advertisement it hears. In a
 dense house that is a firehose of other people's AirPods.
 
-**→ [QUICKSTART.md](QUICKSTART.md) — a working proxy in about ten minutes.**
-**→ [The config wizard](https://davidcoulson.github.io/esphome-ble-proxy/) — answer six questions, get YAML.**
+**→ [Flash one from your browser](https://davidcoulson.github.io/esphome-ble-proxy/) — pick a board, plug it in over USB, click. Wi-Fi is set up over Improv; you never see any YAML.**
+**→ [QUICKSTART.md](QUICKSTART.md) — the ten-minute version if you'd rather write the config yourself.**
+**→ [The config generator](https://davidcoulson.github.io/esphome-ble-proxy/#advanced) — answer six questions, get YAML.**
 
 ---
 
@@ -51,13 +52,34 @@ dedicated S3.** Everything else shares one 2.4 GHz radio between WiFi and BLE,
 and that trade-off is the single biggest constraint in this whole repo —
 [docs/tuning.md](docs/tuning.md) has the numbers.
 
+## Two ways in
+
+**Quick flash.** Prebuilt firmware for seven common boards, installed from the
+browser over Web Serial, with Wi-Fi provisioned over Improv down the same USB
+cable. No ESPHome install, no YAML, no secrets file.
+
+There is one thing it cannot do: **IRKs are compile-time**, so a prebuilt binary
+cannot contain yours — and that is why the Apple manufacturer blocklist ships
+**off** in the quick firmware. Enabling it without IRKs would drop your own
+iPhones along with everyone else's, because it is the IRK match that marks an
+advertisement protected from the payload filters. The flashed device is
+*adoptable*: adopt it in your own ESPHome dashboard and you get a short config
+that pulls `config/adopt/` from this repo, where you add `irks:` and flash over
+the air.
+
+**Bring your own ESPHome.** Write a device file, use the shared packages, keep
+full control. That is the rest of this repo.
+
 ## Repo layout
 
 ```
 config/
   common/          the shared packages — this is the actual configuration
   devices/         one example device file per family (they are 4–8 lines each)
+  adopt/           secret-free packages behind the prebuilt firmware, and the
+                   dashboard_import target a flashed device is adopted from
   secrets.yaml.example
+firmware/          buildable configs CI compiles into the flashable binaries
 docs/
   architecture.md  how the packages compose, and why it is layered this way
   filtering.md     the fork: filter chain, every option, what to allowlist
@@ -67,7 +89,7 @@ docs/
   troubleshooting.md  symptom → cause → fix
   home-assistant.md   Bermuda, BPS, private_ble_device, the entities you get
   upgrading.md     the ESPHome bump runbook (re-sync the fork!)
-wizard/            the config generator, served by GitHub Pages
+wizard/            the browser flasher + config generator, served by GitHub Pages
 ```
 
 ## How a device file works
