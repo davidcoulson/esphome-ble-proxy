@@ -1,0 +1,21 @@
+# Variant: standard, advertisements only.
+# Tracks phones. Home Assistant cannot connect to BLE devices through it.
+#
+# No manufacturer_blocklist. Apple is ~69% of BLE traffic and blocking it is the
+# single biggest saving available, but it is only SAFE alongside a list of IRKs:
+# an advertisement whose resolvable private address matches an IRK is marked
+# protected and skips the payload filters. Without that, blocking 0x004C drops
+# your own iPhones and Watches too, and Home Assistant stops seeing them.
+#
+# IRKs are compile-time and per-person, so a prebuilt binary cannot carry yours.
+# To get Apple filtering AND phone tracking, adopt the device into your own
+# ESPHome dashboard and add irks: there.
+bluetooth_proxy:
+  # active: false — forwards advertisements but will not relay connections.
+  # Home Assistant cannot reach a lock, an LED strip or a SwitchBot through this
+  # proxy, and it holds no connection slots. Costs less RAM, and the radio is
+  # never taken away from scanning by a connection.
+  #
+  # Pick a connecting variant unless every BLE device you care about is a pure
+  # broadcaster.
+  active: false

@@ -114,6 +114,11 @@ pre.out{margin:0;background:var(--code-bg);border:1px solid var(--line);border-r
 .boardgrid button b{display:block;font-size:13.5px;font-weight:600}
 .boardgrid button em{font-style:normal;font-size:12px;color:var(--muted)}
 .boardgrid button[aria-pressed=true] em{color:var(--accent-ink);opacity:.85}
+.qopt{margin-bottom:18px}
+.qopt:last-child{margin-bottom:0}
+.qlabel{font-weight:600;font-size:13.5px;margin-bottom:7px}
+.qopt .seg{margin-bottom:7px}
+.qopt .qnote{font-size:12.5px}
 footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);font-size:12.5px}
 .copied{color:var(--ok);font-size:12.5px;font-weight:600}
 </style>
@@ -146,7 +151,33 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
     </div>
 
     <div class="panel">
-      <h2 class="qh">2 · Plug it in over USB and flash</h2>
+      <h2 class="qh">2 · Two things that have to be decided now</h2>
+      <p class="qnote">
+        Both are baked in at compile time, so they can't be changed from Home Assistant
+        afterwards — everything else (RSSI threshold, scan profile) is a dial you can turn later.
+      </p>
+
+      <div class="qopt">
+        <div class="qlabel">Do you track phones or watches over Bluetooth?</div>
+        <div class="seg" role="group" aria-label="Track phones">
+          <button type="button" data-opt="phones" data-val="yes" aria-pressed="true">Yes — track phones</button>
+          <button type="button" data-opt="phones" data-val="no" aria-pressed="false">No — sensors and tags only</button>
+        </div>
+        <p class="qnote" id="phoneshint"></p>
+      </div>
+
+      <div class="qopt">
+        <div class="qlabel">Should Home Assistant be able to <i>connect</i> to BLE devices through it?</div>
+        <div class="seg" role="group" aria-label="Connections">
+          <button type="button" data-opt="connect" data-val="yes" aria-pressed="true">Yes — relay connections</button>
+          <button type="button" data-opt="connect" data-val="no" aria-pressed="false">No — advertisements only</button>
+        </div>
+        <p class="qnote" id="connecthint"></p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2 class="qh">3 · Plug it in over USB and flash</h2>
       <div id="flashwrap">
         <esp-web-install-button id="installer">
           <button slot="activate" class="btn primary big">Connect &amp; install</button>
@@ -167,7 +198,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
     </div>
 
     <div class="panel">
-      <h2 class="qh">3 · Give it your Wi-Fi</h2>
+      <h2 class="qh">4 · Give it your Wi-Fi</h2>
       <p class="qnote">
         When the flash finishes the installer offers to connect the device to Wi-Fi and asks for your
         network and password. That is <b>Improv</b> — the credentials go straight down the USB cable
@@ -185,40 +216,27 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
     </div>
 
     <div class="panel accent">
-      <h2 class="qh">One thing this firmware can't do for you</h2>
+      <h2 class="qh">Why you can't have both</h2>
       <p class="qnote">
-        Your phones are the noisiest thing on the air and the most useful thing to track. Filtering
-        them correctly needs their <b>IRKs</b> — and an IRK is baked in at compile time, so a
-        prebuilt binary can't have yours.
+        Blocking Apple removes ~69% of everything a proxy hears. Tracking phones needs those same
+        advertisements. On the fleet these coexist because it lists its own phones' <b>IRKs</b> — an
+        advertisement whose rotating address matches one is marked <i>protected</i> and skips the
+        payload filters, so Apple gets blocked and your own phones still come through.
       </p>
       <p class="qnote">
-        That is also why <b>Apple filtering is switched off here</b>. On the fleet it removes ~69% of
-        all traffic, but it is only safe alongside a list of IRKs: an advertisement matching one is
-        marked protected and skips the payload filters. Turn it on without them and your own iPhones
-        and Watches get dropped along with everyone else's.
+        An IRK is per-person and compile-time, so a prebuilt binary cannot contain yours. That is the
+        whole reason this is a choice rather than a default.
       </p>
       <p class="qnote">
-        The device you just flashed is <b>adoptable</b>. Open your own ESPHome dashboard, adopt it,
-        and you get a short config file pulling this project from GitHub — add your
-        <code>irks:</code> there and flash it over the air. No USB, no starting over.
+        <b>Want both?</b> The device you flash is <b>adoptable</b>. Open your own ESPHome dashboard,
+        adopt it, add your <code>irks:</code>, and flash over the air — no USB, no starting over.
         <a href="https://github.com/davidcoulson/esphome-ble-proxy/blob/main/docs/filtering.md#getting-your-irks">How to get your IRKs →</a>
       </p>
     </div>
 
     <div class="panel">
       <h2 class="qh">What you get</h2>
-      <ul class="qlist">
-        <li><b>RSSI filtering</b> — a floor at −90 dBm and a threshold at −75, tunable live from Home
-          Assistant. No reflash.</li>
-        <li><b>Non-resolvable addresses dropped</b> — they rotate and carry no identity, so every
-          rotation looks like a new device. Tiles are exempted.</li>
-        <li><b>Pairing still works</b> — Matter commissioning, Improv and Nordic DFU bypass every
-          filter, because a device in pairing mode has no address you could allowlist in advance.</li>
-        <li><b>Scan profiles</b> — Balanced (37.5% duty) by default, because Wi-Fi and BLE share one
-          radio on most of these boards. Ethernet boards default to Aggressive.</li>
-        <li><b>Counters</b> — forwarded, dropped, and a drop-rate percentage, so tuning is measured
-          rather than guessed.</li>
-      </ul>
+      <ul class="qlist" id="getlist"></ul>
     </div>
 
   </div>
@@ -1227,10 +1245,13 @@ $("board").addEventListener("change", function(){
 $("f").addEventListener("input", render);
 $("f").addEventListener("change", render);
 
-document.querySelectorAll(".seg button").forEach(function(btn){
+// Scoped to [data-mode]: quick mode's option segments are also .seg button, and
+// an unscoped selector let a build-option click clear this group and set
+// `mode` to undefined.
+document.querySelectorAll(".seg button[data-mode]").forEach(function(btn){
   btn.addEventListener("click", function(){
     mode = btn.dataset.mode;
-    document.querySelectorAll(".seg button").forEach(function(x){
+    document.querySelectorAll(".seg button[data-mode]").forEach(function(x){
       x.setAttribute("aria-pressed", String(x === btn));
     });
     render();
@@ -1273,6 +1294,13 @@ $("dl").addEventListener("click", function(){
 /* ───── quick mode ───── */
 var QUICK_ORDER = ["eth-waveshare","eth-xiao","c5","s3","esp32","c6","c3"];
 var quickBoard = "s3";
+// Both compile-time, so they pick a prebuilt variant rather than a setting.
+var quickOpt = { phones: "yes", connect: "yes" };
+
+function quickVariant(){
+  return (quickOpt.phones === "no" ? "nophones" : "standard") +
+         (quickOpt.connect === "no" ? "-adv" : "");
+}
 
 function buildBoardGrid(){
   var grid = $("fwboards");
@@ -1291,15 +1319,59 @@ function buildBoardGrid(){
 }
 
 function renderQuick(){
-  var b = BOARDS[quickBoard];
+  var b = BOARDS[quickBoard], v = quickVariant();
+
   Array.prototype.forEach.call($("fwboards").children, function(btn){
     btn.setAttribute("aria-pressed", String(btn.dataset.key === quickBoard));
   });
+  document.querySelectorAll(".seg button[data-opt]").forEach(function(btn){
+    btn.setAttribute("aria-pressed", String(quickOpt[btn.dataset.opt] === btn.dataset.val));
+  });
+
   // Relative path: the firmware is published alongside this page by the same
   // Pages deploy, so this works locally and on github.io without a base URL.
-  $("installer").setAttribute("manifest", "firmware/" + b.fw + "/manifest.json");
+  $("installer").setAttribute("manifest", "firmware/" + b.fw + "/" + v + "/manifest.json");
   $("ethnote").hidden = !b.eth;
+
+  $("phoneshint").innerHTML = quickOpt.phones === "no"
+    ? "Apple manufacturer data is blocked — about <b>69% of everything this proxy hears</b>, gone "
+      + "before it reaches the network. HomeKit accessories and FindMy tags are kept. "
+      + "<b>Home Assistant will not see your iPhones or Apple Watches through this proxy.</b>"
+    : "Nothing is blocked by manufacturer, so your phones and watches come through. It also means "
+      + "everyone else's AirPods do — the single biggest source of noise. Adopt the device later "
+      + "and add your IRKs to get both.";
+
+  $("connecthint").innerHTML = quickOpt.connect === "no"
+    ? "Advertisements only. Lighter on RAM and the radio is never pulled away from scanning — but "
+      + "Home Assistant <b>cannot reach a lock, an LED strip or a SwitchBot</b> through it. Pick "
+      + "this only if everything you care about is a pure broadcaster."
+    : "Home Assistant can reach connectable devices through this proxy. This is the one you want "
+      + "unless you have a reason not to.";
+
+  var items = [];
+  if (quickOpt.phones === "no")
+    items.push(["Apple blocked", "~69% of traffic dropped on the device. HomeKit and FindMy tags kept."]);
+  else
+    items.push(["Phones tracked", "Nothing blocked by manufacturer, so <code>private_ble_device</code> and Bermuda can see them."]);
+  items.push(["RSSI filtering", "A floor at −90 dBm and a threshold at −75, <b>tunable live</b> from Home Assistant — no reflash."]);
+  items.push(["Non-resolvable addresses dropped", "They rotate <i>and</i> carry no identity, so every rotation looks like a new device. Tiles are exempted."]);
+  items.push(["Pairing still works", "Matter, Improv and Nordic DFU bypass every filter — a device in pairing mode has no address you could allowlist in advance."]);
+  items.push(["Scan profiles", (BOARDS[quickBoard].eth ? "Aggressive by default — no radio contention on Ethernet." : "Balanced (37.5% duty) by default, because Wi-Fi and BLE share one radio here.") + " Switchable from Home Assistant."]);
+  if (quickOpt.connect === "yes")
+    items.push(["Connection relaying", "Home Assistant can reach connectable BLE devices through it."]);
+  items.push(["Counters", "Forwarded, dropped, and a drop-rate percentage, so tuning is measured rather than guessed."]);
+
+  $("getlist").innerHTML = items.map(function(i){
+    return "<li><b>"+i[0]+"</b> — "+i[1]+"</li>";
+  }).join("");
 }
+
+document.querySelectorAll(".seg button[data-opt]").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    quickOpt[btn.dataset.opt] = btn.dataset.val;
+    renderQuick();
+  });
+});
 
 /* ───── top-level mode ───── */
 function setTop(which){

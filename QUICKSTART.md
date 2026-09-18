@@ -7,9 +7,10 @@ option is explained in [docs/filtering.md](docs/filtering.md) and
 
 **Don't want to do any of this?** [Quick flash](https://davidcoulson.github.io/esphome-ble-proxy/)
 installs prebuilt firmware straight from your browser and sets up Wi-Fi over
-Improv — no ESPHome, no YAML, no secrets file. It ships without the Apple filter
-(that needs your IRKs, which a prebuilt binary can't carry), and the device is
-adoptable afterwards so you can add them. Come back here when you want the rest.
+Improv — no ESPHome, no YAML, no secrets file. It asks two questions (block
+Apple? relay connections?) and flashes the matching build. What it can't do is
+Apple filtering *and* phone tracking at once — that needs your IRKs, which are
+compile-time — but the device is adoptable afterwards so you can add them.
 
 **Halfway house:** the [config generator](https://davidcoulson.github.io/esphome-ble-proxy/#advanced)
 asks you six questions and writes steps 2 and 3 for you.

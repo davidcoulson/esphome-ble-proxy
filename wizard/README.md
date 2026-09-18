@@ -26,12 +26,13 @@ Deep links: `#quick`, `#advanced`.
 
 Open `index.html` in a browser and the Advanced mode works immediately.
 
-Quick flash will not: the install button needs `firmware/<slug>/manifest.json`
-next to the page, and those binaries are produced by CI, not committed. To try
-it locally, build one and drop it in place:
+Quick flash will not: the install button needs
+`firmware/<board>/<variant>/manifest.json` next to the page, and those binaries
+are produced by CI, not committed. To try it locally, build one and drop it in
+place:
 
 ```bash
-esphome compile firmware/esp32s3.yaml
+firmware/compose.sh esp32s3 standard > firmware/_build.yaml && esphome compile firmware/_build.yaml
 ```
 
 Web Serial also needs a secure context — `localhost` counts, `file://` does not,
@@ -39,9 +40,10 @@ so serve the directory rather than opening the file.
 
 ## How the firmware gets there
 
-`.github/workflows/pages.yml` compiles every config in `firmware/` with
-`esphome/build-action`, then assembles the Pages site as `wizard/` plus
-`firmware/<slug>/` per board. The manifest and its `.bin` must stay in the same
+`.github/workflows/pages.yml` runs a board x variant matrix (7 x 4 = 28),
+composing each config with `firmware/compose.sh`, compiling it with
+`esphome/build-action`, then assembling the Pages site as `wizard/` plus
+`firmware/<board>/<variant>/`. The manifest and its `.bin` must stay in the same
 directory — the manifest references binaries by bare filename.
 
 Every board is rebuilt on every deploy. The deploy publishes the whole site at
@@ -56,7 +58,8 @@ once, so a partial build would silently drop firmware that is already live.
 2. `firmware/<slug>.yaml` — the adoption package plus `dashboard_import`.
    Device name must be ≤17 characters (24-char hostname cap, minus the 7-char
    MAC suffix `name_add_mac_suffix` appends).
-3. Add the slug to the matrix in `.github/workflows/pages.yml`.
+3. Add the slug to `matrix.slug` in `.github/workflows/pages.yml`. It is built
+   against every variant automatically.
 4. Add an entry to `BOARDS` in `index.html` with `fw`, `short` and `sub`, and
    list its key in `QUICK_ORDER`.
 

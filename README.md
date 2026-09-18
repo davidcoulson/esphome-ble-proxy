@@ -54,18 +54,28 @@ and that trade-off is the single biggest constraint in this whole repo —
 
 ## Two ways in
 
-**Quick flash.** Prebuilt firmware for seven common boards, installed from the
-browser over Web Serial, with Wi-Fi provisioned over Improv down the same USB
-cable. No ESPHome install, no YAML, no secrets file.
+**Quick flash.** Prebuilt firmware for seven boards, installed from the browser
+over Web Serial, with Wi-Fi provisioned over Improv down the same USB cable. No
+ESPHome install, no YAML, no secrets file.
 
-There is one thing it cannot do: **IRKs are compile-time**, so a prebuilt binary
-cannot contain yours — and that is why the Apple manufacturer blocklist ships
-**off** in the quick firmware. Enabling it without IRKs would drop your own
-iPhones along with everyone else's, because it is the IRK match that marks an
-advertisement protected from the payload filters. The flashed device is
-*adoptable*: adopt it in your own ESPHome dashboard and you get a short config
-that pulls `config/adopt/` from this repo, where you add `irks:` and flash over
-the air.
+The wizard asks two questions, because both are compile-time and cannot be
+changed afterwards:
+
+| | |
+|---|---|
+| **Track phones over Bluetooth?** | *No* blocks Apple manufacturer data — ~69% of what a proxy hears — while keeping HomeKit accessories and FindMy tags. *Yes* leaves it through. |
+| **Relay connections?** | *Yes* lets Home Assistant reach locks, LED strips, SwitchBots through the proxy. *No* is advertisements only: lighter, and the radio is never pulled off scanning. |
+
+That is 4 variants × 7 boards, all built ahead of time. Everything else — RSSI
+threshold, RSSI floor, scan profile — is a Home Assistant entity you can change
+live without reflashing.
+
+**You cannot have Apple filtering *and* phone tracking from a prebuilt binary.**
+On the fleet they coexist because it lists its own phones' IRKs: an
+advertisement whose rotating address matches one is marked protected and skips
+the payload filters. An IRK is per-person and compile-time, so no prebuilt image
+can carry yours. The flashed device is *adoptable* — adopt it in your own
+ESPHome dashboard, add `irks:`, flash over the air.
 
 **Bring your own ESPHome.** Write a device file, use the shared packages, keep
 full control. That is the rest of this repo.
@@ -79,7 +89,7 @@ config/
   adopt/           secret-free packages behind the prebuilt firmware, and the
                    dashboard_import target a flashed device is adopted from
   secrets.yaml.example
-firmware/          buildable configs CI compiles into the flashable binaries
+firmware/          board configs, variants/, and compose.sh — CI builds board x variant
 docs/
   architecture.md  how the packages compose, and why it is layered this way
   filtering.md     the fork: filter chain, every option, what to allowlist
