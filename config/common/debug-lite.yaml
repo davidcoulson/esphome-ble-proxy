@@ -1,0 +1,8 @@
+debug:
+  update_interval: 24h
+
+text_sensor:
+  - platform: debug
+    reset_reason:
+      name: "Reset Reason"
+      entity_category: "diagnostic"

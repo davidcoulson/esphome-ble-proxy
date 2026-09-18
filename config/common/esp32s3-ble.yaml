@@ -1,0 +1,35 @@
+
+esphome:
+  name: "ble-esp32s3-${mac}"
+  friendly_name: "${area} S3 ${mac}"
+  area: "${area}"
+  name_add_mac_suffix: false
+  project:
+    name: "dcoulson.ble-proxy-esp32s3"
+    version: "2026.09.17.0+ble${ble_proxy_version}"
+
+esp32:
+  variant: esp32s3
+  framework:
+    advanced:
+      compiler_optimization: PERF
+  # The CONFIG_BT_BLE_42/50_FEATURES_SUPPORTED pair that used to sit here is
+  # already set by ble-proxy.yaml (and BLE_42 by ESPHome itself whenever BT is
+  # on); the 10s task watchdog comes from djc-common.yaml. Same values, stated once.
+
+packages:
+  djc: !include djc-common.yaml
+  ble: !include ble-proxy.yaml
+  wifi: !include wifi.yaml
+  debug: !include debug-lite.yaml
+  gwwd: !include gateway-watchdog.yaml
+
+status_led:
+  pin:
+    number: GPIO10
+    inverted: true
+
+api:
+  # 250ms kept deliberately: this is a BLE proxy, the chattiest kind of node
+  # here, and batching its state traffic is worth the latency.
+  batch_delay: 250ms

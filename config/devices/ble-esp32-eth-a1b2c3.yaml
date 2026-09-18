@@ -1,0 +1,26 @@
+# Read by the ESPHome Fleet add-on. Do not remove.
+# esphome-fleet:
+#   tags: Bermuda
+
+# ESP32-S3 + W5500 Ethernet proxy. No WiFi, no gateway watchdog, no radio
+# contention - so it runs the Aggressive scan profile and carries 5 connection
+# slots. This is the best proxy hardware here; prefer it wherever a wired drop
+# exists.
+#
+# The ethernet: block below overrides common/eth.yaml for the XIAO ESP32-S3 +
+# W5500 wiring, which differs from the Waveshare ESP32-S3-ETH pinout that
+# eth.yaml defaults to. Delete this block on a Waveshare board.
+substitutions:
+  mac: a1b2c3
+  area: "Study"
+
+packages:
+  - !include ../common/esp32-eth-ble.yaml
+
+ethernet:
+  clk_pin: GPIO7
+  mosi_pin: GPIO9
+  miso_pin: GPIO8
+  cs_pin: GPIO2
+  interrupt_pin: GPIO10
+  reset_pin: !remove

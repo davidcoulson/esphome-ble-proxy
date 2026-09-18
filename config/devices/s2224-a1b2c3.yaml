@@ -1,0 +1,10 @@
+# s2224 dual outlet (ESP32-C3 XH-C3F, or ESP8685).
+#
+#   module: xh-c3f  | esp8685
+substitutions:
+  mac: a1b2c3
+  area: "Hallway"
+  module: esp8685
+
+packages:
+  s2224: !include ../common/s2224-esp32c3.yaml

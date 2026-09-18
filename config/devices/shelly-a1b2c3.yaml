@@ -1,0 +1,7 @@
+# Shelly (classic ESP32, unicore, 160 MHz) reflashed as a BLE proxy.
+substitutions:
+  mac: a1b2c3
+  area: "Garage"
+
+packages:
+  shelly: !include ../common/shelly-ble.yaml

@@ -1,0 +1,8 @@
+# Dedicated ESP32-S3 Wi-Fi proxy. Nothing but a proxy - no relays, no buttons.
+# This is the simplest and best-behaved WiFi proxy in the fleet.
+substitutions:
+  mac: a1b2c3
+  area: "Kitchen"
+
+packages:
+  device: !include ../common/esp32s3-ble.yaml

@@ -1,0 +1,33 @@
+# Seeed XIAO ESP32-C6 WiFi proxy. No family package - one of these exists.
+# Composed directly from the shared layers; the platform trim comes from
+# esp32-ble-platform.yaml rather than being restated inline.
+substitutions:
+  mac: a1b2c3
+  area: "Office"
+
+packages:
+  gwwd: !include ../common/gateway-watchdog.yaml
+  djc: !include ../common/djc-common.yaml
+  platform: !include ../common/esp32-ble-platform.yaml
+  wifi: !include ../common/wifi.yaml
+  ble: !include ../common/ble-proxy.yaml
+  debug: !include ../common/debug-lite.yaml
+
+esphome:
+  name: "xiao-${mac}"
+  friendly_name: "${area} XIAO ${mac}"
+  area: "${area}"
+  project:
+    name: "dcoulson.ble-xiao-esp32c6"
+    version: "2026.09.17.0+ble${ble_proxy_version}"
+
+esp32:
+  variant: esp32c6
+  flash_size: 4MB
+  framework:
+    sdkconfig_options:
+      CONFIG_ESP_COEX_SW_COEXIST_ENABLE: y
+      CONFIG_ESP_COEX_PREFER_WIFI: y
+      # C6 is WiFi 6 capable; 11ax gives shorter airtime per frame, which
+      # matters on a board sharing its radio with a 37.5% BLE scan duty cycle.
+      CONFIG_ESP_WIFI_11AX_SUPPORT: y

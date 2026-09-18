@@ -1,0 +1,84 @@
+# ---------------------------------------------------------------------------
+# Reachability watchdog: reboots the node when it still has link but can no
+# longer reach its default gateway.
+#
+# This exists because ESPHome ships no watchdog for that state. The wifi
+# component's reboot_timeout is an ASSOCIATION watchdog - it refreshes
+# last_connected_ on every loop while the radio is associated, so a dead
+# VLAN, gateway or uplink never trips it. And these Ethernet nodes have no
+# wifi component at all, so they have no link-layer watchdog whatsoever.
+# api.reboot_timeout would cover unreachability, but it also fires during
+# any long Home Assistant maintenance and would reboot the fleet at once.
+#
+# The component follows whichever netif currently holds the default route
+# and pings the DHCP-supplied gateway, so this include needs no per-node or
+# per-VLAN configuration. Sensors default to internal: true - local web UI
+# and on-device debugging only, no extra Home Assistant entities.
+#
+# Source: https://github.com/davidcoulson/esphome-gateway-watchdog
+# ---------------------------------------------------------------------------
+
+external_components:
+  # PINNED via @v1.0.0. Without a ref this tracks the default branch, so any
+  # push to main would change the whole fleet's firmware on the next build
+  # with no review step - unacceptable for a component that has already
+  # caused one fleet-wide reboot loop. v1.0.0 is exactly the code deployed
+  # on 2026-09-13, so pinning it changes no binary. Bump deliberately.
+  - source: github://davidcoulson/esphome-gateway-watchdog@v1.0.0
+    components: [gateway_watchdog]
+    # refresh: always - ESPHome caches an external_components clone for a
+    # day by default, and each build environment keeps its OWN cache. A
+    # remote builder happily served a months-stale clone while the local
+    # add-on had the current one, which surfaced as the component demanding
+    # a wifi: block on Ethernet nodes long after that dependency was gone.
+    # Costs a git fetch per build; worth it to make builds reproducible
+    # across build hosts.
+    refresh: always
+
+gateway_watchdog:
+  id: gw_wd
+  # Rebooting is ENABLED again, but only because it is now capped. The
+  # original incident put ~40 nodes into a rolling reboot loop; a deliberate
+  # 55-device mass-OTA reproduction produced zero packet loss on 35 control
+  # nodes, so congestion is not the cause and the real mechanism is unknown.
+  # max_reboots is the backstop that does not care: two reboots is recovery,
+  # the third is a loop, and a node that stays up reporting 100% loss is far
+  # more useful than one power cycling every few minutes. Worst case now is
+  # two reboots per node, not an unbounded loop.
+  reboot: true
+  max_reboots: 2
+  # A long healthy run returns the budget, so the cap is not permanent.
+  budget_reset_after: 1h
+  # Don't watch anything until the node has settled - WiFi, DHCP and mDNS
+  # churn on a fresh boot must not be mistaken for an unreachable gateway.
+  arm_delay: 60s
+  # 300s not 120s. 120s is two minutes of continuous loss, which sounded
+  # generous until a fleet-wide OTA proved otherwise.
+  reboot_window: 300s
+  ping_interval: 5s
+  ping_timeout: 2s
+  update_interval: 60s
+
+sensor:
+  - platform: gateway_watchdog
+    gateway_watchdog_id: gw_wd
+    packet_loss:
+      name: "Gateway Packet Loss"
+      # Surfaced (not internal) while diagnosing the reboot loop - there was
+      # no way to see loss from Home Assistant with these internal.
+      internal: false
+    round_trip_time:
+      name: "Gateway RTT"
+      # Left INTERNAL (the component default). This was surfaced
+      # overnight to diagnose the reboot loop; that work is done.
+      # Unlike packet_loss - which sits at 0.0 almost always, so no
+      # state change and no recorder row - RTT is a float average that
+      # is unique on EVERY publish. At 60s x ~90 nodes that was a state
+      # change and a recorder write each time, roughly 130k rows/day,
+      # plus 5-minute long-term statistics because it carries
+      # state_class: measurement. Still visible on each device's own
+      # web UI, and re-add "internal: false" here if it is ever needed
+      # in Home Assistant again.
+    reboots_used:
+      name: "Gateway Watchdog Reboots Used"
+      internal: false

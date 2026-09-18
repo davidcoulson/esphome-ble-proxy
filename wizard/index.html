@@ -1,0 +1,1147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BLE Proxy Config Generator</title>
+<meta name="description" content="Answer a few questions, get a filtering ESPHome Bluetooth proxy config.">
+<style>
+:root{
+  --bg:#f7f7f5; --panel:#fff; --ink:#1a1a17; --muted:#6b6b63; --line:#e2e2dc;
+  --accent:#8b5e2b; --accent-ink:#fff; --code-bg:#f2f1ec; --ok:#2f6b3d; --warn:#8a5a10;
+  --radius:10px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#16161a; --panel:#1e1e23; --ink:#ececea; --muted:#9a9a94; --line:#30303a;
+    --accent:#c99a5b; --accent-ink:#1a1a17; --code-bg:#141418; --ok:#7bbd8a; --warn:#d9a34a;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16161a; --panel:#1e1e23; --ink:#ececea; --muted:#9a9a94; --line:#30303a;
+  --accent:#c99a5b; --accent-ink:#1a1a17; --code-bg:#141418; --ok:#7bbd8a; --warn:#d9a34a;
+}
+*{box-sizing:border-box}
+/* Must beat `label.f{display:block}` and `.check{display:flex}` below, which
+   are more specific than the UA stylesheet's [hidden] rule. */
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+code,pre,.mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
+a{color:var(--accent)}
+header{padding:28px 20px 18px;border-bottom:1px solid var(--line);background:var(--panel)}
+header .in{max-width:1180px;margin:0 auto}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+header p{margin:0;color:var(--muted);font-size:14px;max-width:62ch}
+header p a{white-space:nowrap}
+main{max-width:1180px;margin:0 auto;padding:22px 20px 60px;
+  display:grid;grid-template-columns:minmax(320px,420px) 1fr;gap:22px;align-items:start}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+.sticky{position:sticky;top:18px}
+@media (max-width:900px){.sticky{position:static}}
+fieldset{border:0;padding:0;margin:0 0 22px}
+legend{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);padding:0;margin-bottom:10px}
+label.f{display:block;margin-bottom:14px}
+label.f > span.lbl{display:block;font-weight:600;font-size:13px;margin-bottom:5px}
+label.f > span.hint{display:block;color:var(--muted);font-size:12.5px;margin-top:5px;line-height:1.45}
+input[type=text],input[type=number],select,textarea{
+  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:7px;
+  background:var(--bg);color:var(--ink);font-size:14px;font-family:inherit}
+textarea{font-family:ui-monospace,monospace;font-size:12.5px;min-height:64px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.check{display:flex;gap:9px;align-items:flex-start;margin-bottom:11px;cursor:pointer}
+.check input{margin:3px 0 0;flex:none;accent-color:var(--accent)}
+.check .t{font-size:13.5px}
+.check .t b{font-weight:600}
+.check .t em{display:block;font-style:normal;color:var(--muted);font-size:12.5px;line-height:1.45}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{flex:1;padding:8px 6px;border:0;background:var(--bg);color:var(--muted);
+  font:inherit;font-size:13px;cursor:pointer;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.tabs{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
+.tabs button{padding:6px 12px;border:1px solid var(--line);background:var(--bg);color:var(--muted);
+  border-radius:999px;font:inherit;font-size:13px;cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--accent);color:var(--accent-ink);
+  border-color:var(--accent);font-weight:600}
+.outhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.fname{font-family:ui-monospace,monospace;font-size:12.5px;color:var(--muted)}
+.btn{padding:7px 13px;border:1px solid var(--line);background:var(--bg);color:var(--ink);
+  border-radius:7px;font:inherit;font-size:13px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+pre.out{margin:0;background:var(--code-bg);border:1px solid var(--line);border-radius:8px;
+  padding:14px;overflow:auto;max-height:70vh;font-size:12.5px;line-height:1.5;white-space:pre;
+  -moz-tab-size:2;tab-size:2}
+.note{border-left:3px solid var(--accent);padding:9px 0 9px 12px;margin:14px 0;
+  color:var(--muted);font-size:13px;line-height:1.5}
+.note b{color:var(--ink)}
+.warn{border-left-color:var(--warn)}
+.steps{margin:0;padding-left:20px;font-size:13.5px;line-height:1.65}
+.steps li{margin-bottom:9px}
+.steps code{background:var(--code-bg);padding:1px 5px;border-radius:4px;font-size:12.5px}
+footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);font-size:12.5px}
+.copied{color:var(--ok);font-size:12.5px;font-weight:600}
+</style>
+</head>
+<body>
+
+<header><div class="in">
+  <h1>ESPHome BLE Proxy — config generator</h1>
+  <p>Builds a Bluetooth proxy config that <b>filters advertisements on the device</b>, before they
+  cross your network. Answer what you know, ignore the rest — the defaults are the ones running on a
+  ~70-node fleet. <a href="https://github.com/davidcoulson/esphome-ble-proxy">Repo &amp; docs →</a></p>
+</div></header>
+
+<main>
+
+<!-- ─────────────────────────── FORM ─────────────────────────── -->
+<form class="panel" id="f" autocomplete="off">
+
+  <fieldset>
+    <legend>1 · Output</legend>
+    <div class="seg" role="group" aria-label="Output mode">
+      <button type="button" data-mode="standalone" aria-pressed="true">Standalone file</button>
+      <button type="button" data-mode="fleet" aria-pressed="false">Uses common/ packages</button>
+    </div>
+    <p class="hint" id="modehint" style="color:var(--muted);font-size:12.5px;margin:8px 0 0"></p>
+  </fieldset>
+
+  <fieldset>
+    <legend>2 · Hardware</legend>
+    <label class="f">
+      <span class="lbl">Board</span>
+      <select id="board">
+        <optgroup label="Best — no radio contention">
+          <option value="eth-waveshare">ESP32-S3 + W5500 Ethernet (Waveshare ESP32-S3-ETH)</option>
+          <option value="eth-xiao">ESP32-S3 + W5500 Ethernet (XIAO ESP32-S3)</option>
+          <option value="c5">ESP32-C5 (WiFi, 5&nbsp;GHz capable)</option>
+        </optgroup>
+        <optgroup label="Good">
+          <option value="s3" selected>ESP32-S3 (WiFi)</option>
+          <option value="esp32">ESP32 classic / reflashed Shelly (WiFi)</option>
+        </optgroup>
+        <optgroup label="Single radio — must run Balanced">
+          <option value="c6">ESP32-C6 / XIAO C6 (WiFi)</option>
+          <option value="c3">ESP32-C3 / ESP8685 (WiFi)</option>
+        </optgroup>
+        <optgroup label="Specific fleet hardware">
+          <option value="rrn00">RRN00 in-wall dual outlet</option>
+          <option value="s2224">s2224 dual outlet</option>
+          <option value="cfsw1">CloudFree SW1 switch</option>
+        </optgroup>
+      </select>
+      <span class="hint" id="boardhint"></span>
+    </label>
+
+    <label class="f" id="modulewrap" hidden>
+      <span class="lbl">Board revision</span>
+      <select id="module"></select>
+      <span class="hint">Selects the pin map inside the family package.</span>
+    </label>
+
+    <label class="f" id="bandwrap" hidden>
+      <span class="check" style="margin:0">
+        <input type="checkbox" id="band5" checked>
+        <span class="t"><b>Put WiFi on 5&nbsp;GHz</b>
+        <em>Takes WiFi off the band BLE scans — removes the contention entirely, so this board
+        can run the Aggressive scan profile.</em></span>
+      </span>
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>3 · Identity</legend>
+    <div class="row">
+      <label class="f"><span class="lbl">MAC suffix</span>
+        <input type="text" id="mac" value="a1b2c3" maxlength="12" spellcheck="false"></label>
+      <label class="f"><span class="lbl">Area</span>
+        <input type="text" id="area" value="Kitchen"></label>
+    </div>
+    <p class="hint" style="color:var(--muted);font-size:12.5px;margin:-6px 0 0">
+      Last 6 hex digits of the board's MAC, and the Home Assistant area it lives in.
+      Don't know the MAC? Put anything — flash, read the real one off the dashboard, fix it, re-flash
+      over the air.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>4 · Filtering</legend>
+
+    <label class="f"><span class="lbl">RSSI threshold (dBm)</span>
+      <input type="number" id="rssi" value="-75" min="-95" max="-40">
+      <span class="hint" id="rssihint"></span></label>
+
+    <label class="f"><span class="lbl">RSSI floor (dBm)</span>
+      <input type="number" id="floor" value="-90" min="-100" max="-40">
+      <span class="hint">Absolute reception limit, applied to everything. Below this an RSSI carries
+      no usable distance information — forwarding it misleads a tracker rather than helping it.</span></label>
+
+    <label class="check"><input type="checkbox" id="fIrk" checked>
+      <span class="t"><b>Drop other people's phones (IRK matching)</b>
+      <em>The biggest single win — 56–66% of advertisements. A rotating address that resolves to none
+      of your keys can never be tracked, so it is pure noise.</em></span></label>
+
+    <label class="f" id="irkwrap">
+      <span class="lbl">How many phones / watches?</span>
+      <input type="number" id="irkCount" value="2" min="0" max="16">
+      <span class="hint">Generates that many <code>!secret</code> keys and a matching secrets stub.
+      Get the values from Home Assistant → Private BLE Device, or capture them with
+      <code>irk-capture</code>.</span></label>
+
+    <label class="check"><input type="checkbox" id="fApple" checked>
+      <span class="t"><b>Block Apple manufacturer data</b>
+      <em>~69% of remaining traffic: AirPods, HomePods, Continuity, neighbours. Your own phones are
+      unaffected — the IRK match protects them.</em></span></label>
+
+    <label class="check" id="findmyWrap"><input type="checkbox" id="fFindmy" checked>
+      <span class="t"><b>…but keep AirTags / FindMy tags</b>
+      <em>No per-accessory scoping exists, so every FindMy tag in range comes through. Bounded at
+      −85&nbsp;dBm so a neighbour's AirTag at the fence isn't forwarded.</em></span></label>
+
+    <label class="check"><input type="checkbox" id="fNonRes" checked>
+      <span class="t"><b>Drop non-resolvable addresses</b>
+      <em>They rotate <i>and</i> carry no identity — not even an IRK can resolve them, and every
+      rotation looks like a new device. Tiles are rescued below.</em></span></label>
+
+    <label class="check"><input type="checkbox" id="fTile" checked>
+      <span class="t"><b>Keep Tiles</b><em>Adds 0xFEED / 0xFEEC to the service-UUID passthrough.</em></span></label>
+
+    <label class="check"><input type="checkbox" id="fPair" checked>
+      <span class="t"><b>Let devices in pairing mode through</b>
+      <em>Matter commissioning, Improv WiFi, Nordic DFU. Their addresses rotate and aren't knowable
+      in advance, so the service UUID is the only handle there is.</em></span></label>
+
+    <label class="f"><span class="lbl">Tracked tag MACs</span>
+      <textarea id="macs" spellcheck="false" placeholder="AA:BB:CC:DD:EE:01&#10;AA:BB:CC:DD:EE:02"></textarea>
+      <span class="hint">One per line. These bypass <i>every</i> filter except the floor — a weak
+      reading from a tracked tag is exactly what places it nearer another proxy. Leave empty to read
+      them from <code>!secret ble_pet_tag_macs</code> instead.</span></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>5 · Scanning</legend>
+    <label class="f"><span class="lbl">Default scan profile</span>
+      <select id="profile">
+        <option value="Balanced">Balanced — 37.5% duty (every WiFi board)</option>
+        <option value="Aggressive">Aggressive — 94% (Ethernet / C5 on 5 GHz)</option>
+        <option value="Insane">Insane — 100% (diagnostics only)</option>
+      </select>
+      <span class="hint" id="profhint"></span></label>
+
+    <label class="check"><input type="checkbox" id="calib" checked>
+      <span class="t"><b>Beacon for receiver auto-calibration</b>
+      <em>Each proxy advertises an iBeacon so its siblings can range it. Lets BPS fit a per-receiver
+      distance correction. Harmless if you don't use BPS.</em></span></label>
+  </fieldset>
+
+</form>
+
+<!-- ─────────────────────────── OUTPUT ─────────────────────────── -->
+<div>
+  <div class="panel sticky">
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="device" aria-selected="true">Device config</button>
+      <button type="button" role="tab" data-tab="secrets" aria-selected="false">secrets.yaml</button>
+      <button type="button" role="tab" data-tab="next" aria-selected="false">What to do with it</button>
+    </div>
+
+    <div class="outhead">
+      <span class="fname" id="fname"></span>
+      <span>
+        <span class="copied" id="copied" hidden>copied</span>
+        <button type="button" class="btn" id="dl">Download</button>
+        <button type="button" class="btn primary" id="copy">Copy</button>
+      </span>
+    </div>
+
+    <pre class="out" id="out"></pre>
+    <div id="nextpane" hidden></div>
+  </div>
+</div>
+
+</main>
+
+<footer>
+  Generated configs reference <code>!secret</code> for every credential — nothing sensitive is
+  produced here, and nothing you type leaves your browser. ·
+  <a href="https://github.com/davidcoulson/esphome-ble-proxy">esphome-ble-proxy</a> ·
+  <a href="https://github.com/davidcoulson/esphome-bluetooth-proxy-filter">the filter fork</a>
+</footer>
+
+<script>
+(function(){
+"use strict";
+
+var FORK_TAG = "v1.5.0";
+var MIN_ESPHOME = "2026.9.0";
+var IDF = "6.1.0";
+
+var BOARDS = {
+  "eth-waveshare": {variant:"esp32s3", eth:true, ethPins:"waveshare", family:"esp32-eth-ble.yaml",
+    prefix:"ble-esp32-eth", proj:"ble-proxy-eth", flash:"16MB", slots:5, prof:"Aggressive",
+    hint:"Wired uplink, no WiFi, no radio contention. The best proxy hardware here."},
+  "eth-xiao": {variant:"esp32s3", eth:true, ethPins:"xiao", family:"esp32-eth-ble.yaml",
+    prefix:"ble-esp32-eth", proj:"ble-proxy-eth", flash:"16MB", slots:5, prof:"Aggressive",
+    hint:"Same, but the XIAO's W5500 wiring differs from the Waveshare board and has no reset line."},
+  "c5": {variant:"esp32c5", family:null, prefix:"esp32c5", proj:"ble-esp32c5", flash:"4MB",
+    cpu:"240MHZ", band:true, prof:"Aggressive",
+    hint:"The only board here with a 5 GHz radio — which is how it escapes the WiFi/BLE contention."},
+  "s3": {variant:"esp32s3", family:"esp32s3-ble.yaml", prefix:"ble-esp32s3", proj:"ble-proxy-esp32s3",
+    prof:"Balanced", hint:"Dual core, so BLE and WiFi aren't fighting for one CPU. A good, boring proxy."},
+  "esp32": {variant:"esp32", family:"shelly-ble.yaml", prefix:"shelly", proj:"ble-shelly-esp32",
+    cpu:"160MHz", unicore:true, prof:"Balanced",
+    hint:"Classic ESP32. BLE 4.2 only — fine for proxying, it's all Bermuda needs."},
+  "c6": {variant:"esp32c6", family:null, prefix:"xiao", proj:"ble-xiao-esp32c6", flash:"4MB",
+    coex:true, ax:true, prof:"Balanced",
+    hint:"Single core, one radio shared with WiFi. WiFi 6 capable, which shortens airtime per frame."},
+  "c3": {variant:"esp32c3", family:null, prefix:"ble-c3", proj:"ble-esp32c3", flash:"4MB",
+    coex:true, prof:"Balanced",
+    hint:"Single core, one radio. Must run Balanced — at 75% duty this starved WiFi enough to break OTA."},
+  "rrn00": {variant:"esp32c3", family:"rrn00.yaml", prefix:"esp8685-rrn00", proj:"ble-rrn00",
+    coex:true, prof:"Balanced", modules:{"3":"WROOM-03 (ESP32-C3)","6":"WROOM-06 (ESP32-C3)","c6":"WT0132C6 (ESP32-C6)"},
+    hint:"In-wall dual outlet. The proxy runs alongside two relays and their buttons."},
+  "s2224": {variant:"esp32c3", family:"s2224-esp32c3.yaml", prefix:"s2224", proj:"ble-s2224",
+    coex:true, prof:"Balanced", modules:{"xh-c3f":"XH-C3F (ESP32-C3)","esp8685":"ESP8685"},
+    hint:"Dual outlet, two relays."},
+  "cfsw1": {variant:"esp32c3", family:"cf-sw1-esp8685.yaml", prefix:"cf-sw1", proj:"ble-cfsw1-esp8685",
+    coex:true, prof:"Balanced", hint:"CloudFree SW1 — one relay plus the proxy."}
+};
+
+var $ = function(id){return document.getElementById(id);};
+var mode = "standalone", tab = "device";
+
+/* ───── helpers ───── */
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function slug(s){return String(s||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");}
+function macLines(){
+  return $("macs").value.split("\n").map(function(l){return l.trim();}).filter(Boolean);
+}
+function cfg(){
+  var b = BOARDS[$("board").value];
+  return {
+    b:b, key:$("board").value,
+    mac:(($("mac").value||"a1b2c3").trim().toLowerCase().replace(/[^0-9a-f]/g,"")||"a1b2c3"),
+    area:($("area").value||"Unknown").trim(),
+    module:$("module").value,
+    band5:b.band && $("band5").checked,
+    rssi:parseInt($("rssi").value,10)||-75,
+    floor:parseInt($("floor").value,10)||-90,
+    irk:$("fIrk").checked, irkN:Math.max(0,parseInt($("irkCount").value,10)||0),
+    apple:$("fApple").checked, findmy:$("fApple").checked && $("fFindmy").checked,
+    nonres:$("fNonRes").checked, tile:$("fTile").checked, pair:$("fPair").checked,
+    macs:macLines(), profile:$("profile").value, calib:$("calib").checked
+  };
+}
+function devName(c){ return c.b.prefix + "-" + c.mac; }
+
+/* ───── the bluetooth_proxy block, shared by both modes ───── */
+function proxyBlock(c, indent){
+  var p = indent||"", L = [];
+  L.push(p+"bluetooth_proxy:");
+  L.push(p+"  id: ble_proxy");
+  L.push(p+"  active: true");
+  if (c.b.slots) L.push(p+"  connection_slots: "+c.b.slots);
+  L.push(p+"  # Compile-time fallback only — the \"BLE RSSI Threshold\" number below restores on");
+  L.push(p+"  # boot and overwrites this. Tune it there, not by reflashing.");
+  L.push(p+"  rssi_threshold: "+c.rssi);
+  L.push(p+"  # Absolute reception limit, applied to EVERY advertisement before anything is");
+  L.push(p+"  # categorised. Below this an RSSI carries no usable distance information: it does");
+  L.push(p+"  # not help a tracker triangulate, it misleads it.");
+  L.push(p+"  rssi_floor: "+c.floor);
+
+  if (c.nonres){
+    L.push("");
+    L.push(p+"  # Non-resolvable private addresses rotate AND carry no identity, so not even an");
+    L.push(p+"  # IRK can resolve them — every rotation looks like a brand new device.");
+    L.push(p+"  drop_non_resolvable: true");
+  }
+  if (c.irk && c.irkN > 0){
+    L.push("");
+    L.push(p+"  # Exempts Espressif-OUI addresses from the IRK test below (NOT from the RSSI");
+    L.push(p+"  # threshold). Near-inert: ESPHome advertises on the public MAC, and a public");
+    L.push(p+"  # address is never an RPA.");
+    L.push(p+"  allow_espressif: true");
+    L.push("");
+    L.push(p+"  # Identity Resolving Keys for your own phones and watches. A rotating private");
+    L.push(p+"  # address that resolves to none of these belongs to somebody else, rotates, and");
+    L.push(p+"  # can never be tracked — so it is dropped regardless of how close it is.");
+    L.push(p+"  # Mirror this list with Home Assistant's private_ble_device integration.");
+    L.push(p+"  irks:");
+    for (var i=1;i<=c.irkN;i++) L.push(p+"    - !secret ble_irk_"+i);
+  }
+  if (c.apple){
+    L.push("");
+    L.push(p+"  # Bluetooth SIG company identifiers to discard (AD type 0xFF). 0x004C Apple is");
+    L.push(p+"  # ~69% of everything still reaching the network. YOUR OWN Apple devices are not");
+    L.push(p+"  # affected: they advertise as RPAs, the irks: above marks them protected, and a");
+    L.push(p+"  # protected advertisement skips the payload filters entirely.");
+    L.push(p+"  manufacturer_blocklist:");
+    L.push(p+"    - 0x004C  # Apple");
+    L.push("");
+    L.push(p+"  # HomeKit accessories advertise under Apple's company id with subtype 0x06, so");
+    L.push(p+"  # the blocklist above would silently kill every one — and unlike phones they have");
+    L.push(p+"  # no IRK to rescue them.");
+    L.push(p+"  allow_homekit: true");
+    if (c.findmy){
+      L.push("");
+      L.push(p+"  # AirTags and licensed third-party tags: Apple company id, subtype 0x12, random");
+      L.push(p+"  # static address — so the 0x004C entry is the only thing dropping them, and it");
+      L.push(p+"  # drops every one. There is NO per-accessory scoping (the advert carries nothing");
+      L.push(p+"  # a proxy could match on), so every FindMy tag in range comes through. -85 bounds");
+      L.push(p+"  # that below the fleet threshold rather than the floor.");
+      L.push(p+"  allow_findmy:");
+      L.push(p+"    rssi: -85");
+    }
+  }
+  if (c.calib && c.apple){
+    L.push("");
+    L.push(p+"  # iBeacon is Apple manufacturer data subtype 0x02, so the 0x004C entry above drops");
+    L.push(p+"  # EVERY iBeacon — allow_homekit does not rescue them, that exempts 0x06 only.");
+    L.push(p+"  # Scoped to major 1 so only OUR OWN calibration beacons are exempt; every other");
+    L.push(p+"  # iBeacon in range stays blocked.");
+    L.push(p+"  #");
+    L.push(p+"  # -95 rather than -127: the weak cross-room pairs are the ones carrying the");
+    L.push(p+"  # geometry, so this is deliberately far looser than the fleet threshold. But -127");
+    L.push(p+"  # would disable the component's internal pre-gate — with something allowed through");
+    L.push(p+"  # unconditionally nothing can be rejected on RSSI alone, so every advert would");
+    L.push(p+"  # reach the categoriser. -95 is at the ESP32's own receive sensitivity and keeps it.");
+    L.push(p+"  allow_ibeacon:");
+    L.push(p+"    - major: 1");
+    L.push(p+"      rssi: -95");
+  }
+  if (c.macs.length || !c.macs.length){
+    L.push("");
+    L.push(p+"  # Tracked tags. These bypass EVERY filter including the RSSI threshold: a tag");
+    L.push(p+"  # reading weak at this proxy is exactly the measurement a tracker needs to place");
+    L.push(p+"  # it nearer another one, so it must not be dropped. Still bounded by rssi_floor.");
+    L.push(p+"  mac_allowlist:");
+    if (c.macs.length) c.macs.forEach(function(m){ L.push(p+'    - "'+m+'"'); });
+    else L.push(p+"    []  # or: !secret ble_pet_tag_macs");
+  }
+  var uuids = [];
+  if (c.pair){
+    uuids.push([p+"    - 0xFFF6", "# Matter commissioning — commissioning devices advertise from a"]);
+    uuids.push([p+'    - "00467768-6228-2272-4663-277478268000"', "# Improv Wi-Fi"]);
+    uuids.push([p+"    - 0xFE59", "# Nordic DFU"]);
+  }
+  if (c.tile){
+    uuids.push([p+"    - 0xFEED", "# Tile"]);
+    uuids.push([p+"    - 0xFEEC", "# Tile, not yet claimed"]);
+  }
+  if (uuids.length){
+    L.push("");
+    L.push(p+"  # Service UUIDs that bypass EVERY filter, including the address-type tests and the");
+    L.push(p+"  # RSSI threshold. These exist for devices whose address CANNOT be known ahead of");
+    L.push(p+"  # time: a device in pairing mode, or a Tile, advertises from a rotating private");
+    L.push(p+"  # address, so no mac_allowlist entry could ever cover it.");
+    L.push(p+"  #");
+    L.push(p+"  # Don't add high-volume public services here (0xFD6F exposure notification, 0xFE2C");
+    L.push(p+"  # Fast Pair) — those devices are not being paired to HA, and letting them bypass");
+    L.push(p+"  # the filters would undo the whole point of this block.");
+    L.push(p+"  service_uuid_allowlist:");
+    uuids.forEach(function(u){ L.push(u[0]+"   "+u[1]); });
+    L.push(p+"  # Bound by the floor rather than the threshold — same reasoning as mac_allowlist.");
+    L.push(p+"  rssi_service_uuid: "+c.floor);
+  }
+  return L.join("\n");
+}
+
+/* ───── shared: tracker, beacon, entities ───── */
+function trackerBlock(c){
+  var win = c.profile==="Insane" ? "1100ms" : (c.profile==="Aggressive" ? "300ms" : "120ms");
+  var iv  = c.profile==="Insane" ? "1100ms" : "320ms";
+  var duty= c.profile==="Insane" ? "100%" : (c.profile==="Aggressive" ? "94%" : "37.5%");
+  return [
+"esp32_ble:",
+"  max_connections: "+(c.b.slots||3),
+(c.calib ? "  # ON so this proxy beacons for receiver auto-calibration (see esp32_ble_beacon\n  #    below). Negligible airtime next to the scan duty cycle already running.\n  advertising: true" : "  advertising: false"),
+"",
+"esp32_ble_tracker:",
+"  id: ble_tracker",
+"  scan_parameters:",
+"    # Don't auto-start scanning — the api: block below starts it when Home",
+"    # Assistant connects and stops it when nothing is listening.",
+"    continuous: false",
+"    # PASSIVE. Active scanning transmits a scan request per advertiser to pull a",
+"    # scan response, which costs TX airtime on a shared radio AND inflates every",
+"    # forwarded packet (the hub merges scan_rsp into the advert payload). RSSI is",
+"    # all a tracker needs, so the scan response buys nothing.",
+"    # TRADE-OFF: local names carried only in a scan response are lost, so HA can no",
+"    # longer discover brand-new BLE devices by name. Use the onboarding switch below.",
+"    active: false",
+"    interval: "+iv+"  # time spent on each advertising channel",
+"    window:   "+win+"  # "+duty+" duty cycle — every percent spent scanning is a percent",
+"                     # WiFi does not get, on any board sharing one radio."
+  ].join("\n");
+}
+
+function beaconBlock(){
+  return [
+"# ---------------------------------------------------------------------------",
+"# Receiver auto-calibration beacon. Every proxy advertises an iBeacon so its",
+"# siblings can range it; comparing those probe-to-probe distances against the",
+"# proxies' known positions is what reveals each receiver's individual error.",
+"#",
+"# uuid/major/minor are not how a probe is identified — that is done on the",
+"# Bluetooth MAC — so the payload is just a carrier and minor is a constant.",
+"# major 1 must match the allow_ibeacon filter above. Change one, change both.",
+"#",
+"# 500-1000ms is slow for a beacon, deliberately: this radio is shared, and",
+"# calibration samples over minutes.",
+"# ---------------------------------------------------------------------------",
+"esp32_ble_beacon:",
+"  type: iBeacon",
+"  uuid: fde3b150-2f64-43ba-aee9-867f75ee4a6f",
+"  major: 1",
+"  minor: 1",
+"  min_interval: 500ms",
+"  max_interval: 1000ms"
+  ].join("\n");
+}
+
+function apiBlock(c){
+  return [
+"api:",
+"  encryption:",
+"    key: !secret api_key_ble_proxy",
+(c.b.eth
+ ? "  # 300s ON PURPOSE. This is an Ethernet node: no wifi reboot_timeout and no\n  # gateway watchdog, so the API timeout is its only automatic recovery from\n  # \"link up but unreachable\". The cost is a reboot during any 5-minute Home\n  # Assistant outage, which is accepted for these nodes.\n  reboot_timeout: 300s"
+ : "  # 0s: \"Home Assistant went away for five minutes\" is not \"this node is\n  # broken\". A core upgrade once rebooted a whole fleet at once. wifi's\n  # reboot_timeout below still recovers a wedged radio.\n  reboot_timeout: 0s"),
+"  # NOTE: batch_delay does NOTHING for BLE advertisement traffic — the flush",
+"  # calls send_message() directly and bypasses the deferred batch queue that",
+"  # batch_delay governs. It only affects sensor state.",
+"  batch_delay: 500ms",
+"  on_client_connected:",
+"    # Don't override a deliberate \"Disabled\" profile when HA reconnects.",
+"    - if:",
+"        condition:",
+"          lambda: 'return id(sel_ble_scan_profile).current_option() != \"Disabled\";'",
+"        then:",
+"          - esp32_ble_tracker.start_scan:",
+"              continuous: true",
+"  on_client_disconnected:",
+"    # Nothing is listening, so don't burn airtime scanning.",
+"    if:",
+"      condition:",
+"        not:",
+"          api.connected:",
+"      then:",
+"        - esp32_ble_tracker.stop_scan:"
+  ].join("\n");
+}
+
+function entitiesBlock(c){
+  var L = [];
+  L.push("switch:");
+  L.push("  # ONBOARDING SWITCH. Scanning is passive, which drops scan responses — and a great");
+  L.push("  # many BLE devices put their local name ONLY in the scan response. Home Assistant");
+  L.push("  # discovers new BLE devices by name, so with passive scanning a brand-new device may");
+  L.push("  # never be discoverable at all. Flip this on, add the device, flip it off.");
+  L.push("  #");
+  L.push("  # Deliberately NOT restore_value: a reboot must return to passive, so an accidental");
+  L.push("  # leave-on cannot quietly cost airtime for weeks.");
+  L.push("  - platform: template");
+  L.push('    name: "BLE Active Scan (onboarding)"');
+  L.push("    id: sw_ble_active_scan");
+  L.push("    icon: mdi:bluetooth-audio");
+  L.push("    entity_category: config");
+  L.push("    optimistic: true");
+  L.push("    restore_mode: ALWAYS_OFF");
+  L.push("    turn_on_action:");
+  L.push("      - lambda: 'id(ble_tracker).set_scan_active(true);'");
+  L.push("      - esp32_ble_tracker.stop_scan:");
+  L.push("      - delay: 200ms");
+  L.push("      - esp32_ble_tracker.start_scan: {continuous: true}");
+  L.push("    turn_off_action:");
+  L.push("      - lambda: 'id(ble_tracker).set_scan_active(false);'");
+  L.push("      - esp32_ble_tracker.stop_scan:");
+  L.push("      - delay: 200ms");
+  L.push("      - esp32_ble_tracker.start_scan: {continuous: true}");
+  L.push("");
+  L.push("number:");
+  L.push("  - platform: template");
+  L.push('    name: "BLE RSSI Threshold"');
+  L.push("    id: num_ble_rssi_threshold");
+  L.push("    icon: mdi:signal-distance-variant");
+  L.push("    entity_category: config");
+  L.push("    optimistic: true");
+  L.push("    restore_value: true");
+  L.push("    initial_value: "+c.rssi);
+  L.push("    # Bottom pinned to rssi_floor, not chosen independently: the floor already");
+  L.push("    # discards everything below it, so a lower setting would be dead travel on the");
+  L.push("    # dial — it would appear to loosen the filter and change nothing.");
+  L.push("    # >> RAISING rssi_floor? Raise this to match. <<");
+  L.push("    min_value: "+c.floor);
+  L.push("    max_value: -40");
+  L.push("    step: 1");
+  L.push("    unit_of_measurement: dBm");
+  L.push("    mode: box");
+  L.push("    # on_value, NOT set_action: TemplateNumber::setup() restores by calling");
+  L.push("    # publish_state() and never control(), so set_action would not fire on boot and the");
+  L.push("    # restored value would display while the proxy kept the YAML default.");
+  L.push("    on_value:");
+  L.push("      - lambda: 'id(ble_proxy).set_rssi_threshold((int8_t) x);'");
+  L.push("");
+  L.push("sensor:");
+  var sensors = [
+    ["BLE Adverts Forwarded","sens_ble_adv_fwd","mdi:bluetooth-transfer","get_adv_forwarded()",
+     "Advertisement accounting from the forked component, so the effect of the threshold is\n  # measurable instead of guessed. The C++ counters are free-running totals; these report the\n  # delta since the last update so they graph as a rate. Unsigned subtraction stays correct\n  # across the uint32 rollover, so nothing needs resetting."],
+    ["BLE Adverts Dropped","sens_ble_adv_dropped","mdi:bluetooth-off","get_adv_dropped()",null],
+    ["BLE RPAs Dropped","sens_ble_rpa_dropped","mdi:cellphone-remove","get_adv_dropped_rpa()",
+     "Subset of Dropped: rotating addresses that resolved to none of your IRKs — i.e. other\n  # people's phones and watches. Separated out because it answers a different question than\n  # the RSSI drops: how much of the noise is untrackable."],
+    ["BLE Service UUID Allowed","sens_ble_svc_uuid_allowed","mdi:key-wireless","get_adv_allowed_service_uuid()",
+     "Adverts forwarded ONLY because they matched service_uuid_allowlist. Sits at zero while\n  # nothing is pairing, so any movement is direct evidence the passthrough fired — which makes\n  # a failed commissioning attempt diagnosable instead of guesswork."]
+  ];
+  sensors.forEach(function(s){
+    if (s[4]) L.push("  # "+s[4]);
+    L.push("  - platform: template");
+    L.push('    name: "'+s[0]+'"');
+    L.push("    id: "+s[1]);
+    L.push('    unit_of_measurement: "adv/min"');
+    L.push("    state_class: measurement");
+    L.push("    accuracy_decimals: 0");
+    L.push("    entity_category: diagnostic");
+    L.push("    icon: "+s[2]);
+    L.push("    update_interval: 60s");
+    L.push("    lambda: |-");
+    L.push("      static uint32_t last = 0;");
+    L.push("      uint32_t now = id(ble_proxy)."+s[3]+";");
+    L.push("      uint32_t delta = now - last;");
+    L.push("      last = now;");
+    L.push("      return (float) delta;");
+    L.push("");
+  });
+  L.push("  # THE tuning number: what fraction of what this proxy hears is being suppressed.");
+  L.push("  # Returns NAN (unknown) rather than 0 when nothing was heard at all, so an idle proxy");
+  L.push("  # does not look like a 0% drop rate.");
+  L.push("  - platform: template");
+  L.push('    name: "BLE Advert Drop Rate"');
+  L.push("    id: sens_ble_drop_rate");
+  L.push('    unit_of_measurement: "%"');
+  L.push("    state_class: measurement");
+  L.push("    accuracy_decimals: 1");
+  L.push("    entity_category: diagnostic");
+  L.push("    icon: mdi:filter-variant");
+  L.push("    update_interval: 60s");
+  L.push("    lambda: |-");
+  L.push("      static uint32_t last_f = 0, last_d = 0;");
+  L.push("      uint32_t f = id(ble_proxy).get_adv_forwarded();");
+  L.push("      uint32_t d = id(ble_proxy).get_adv_dropped();");
+  L.push("      uint32_t df = f - last_f, dd = d - last_d;");
+  L.push("      last_f = f; last_d = d;");
+  L.push("      uint32_t total = df + dd;");
+  L.push("      if (total == 0) return NAN;");
+  L.push("      return (100.0f * dd) / total;");
+  L.push("");
+  L.push("select:");
+  L.push("  - platform: template");
+  L.push('    name: "BLE Scan Profile"');
+  L.push("    id: sel_ble_scan_profile");
+  L.push("    icon: mdi:speedometer");
+  L.push("    optimistic: true");
+  L.push("    restore_value: true");
+  L.push('    initial_option: "'+c.profile+'"');
+  L.push("    options: [\"Insane\", \"Aggressive\", \"Balanced\", \"Disabled\"]");
+  L.push("    set_action:");
+  L.push("      - lambda: |-");
+  L.push("          // UNITS: these setters take raw BLE controller units of 0.625ms, NOT");
+  L.push("          // milliseconds. The scan_parameters above ARE in ms and get converted at");
+  L.push("          // codegen; a literal here does not. ms / 0.625 = units.");
+  L.push("          auto opt = id(sel_ble_scan_profile).current_option();");
+  L.push("          if (opt == \"Insane\") {");
+  L.push("            id(ble_tracker).set_scan_interval(1760);  // 1100ms");
+  L.push("            id(ble_tracker).set_scan_window(1760);    // 1100ms -> 100%");
+  L.push("            id(ble_tracker).set_scan_active(false);");
+  L.push("          } else if (opt == \"Aggressive\") {");
+  L.push("            id(ble_tracker).set_scan_interval(512);   // 320ms");
+  L.push("            id(ble_tracker).set_scan_window(480);     // 300ms -> 94%");
+  L.push("            id(ble_tracker).set_scan_active(false);");
+  L.push("          } else if (opt == \"Balanced\") {");
+  L.push("            id(ble_tracker).set_scan_interval(512);   // 320ms");
+  L.push("            id(ble_tracker).set_scan_window(192);     // 120ms -> 37.5%");
+  L.push("            id(ble_tracker).set_scan_active(false);");
+  L.push("          }");
+  L.push("      - if:");
+  L.push("          condition:");
+  L.push("            lambda: 'return id(sel_ble_scan_profile).current_option() == \"Disabled\";'");
+  L.push("          then:");
+  L.push("            # Actually stop the radio. Setting a tiny window still scans and still forwards.");
+  L.push("            - esp32_ble_tracker.stop_scan:");
+  L.push("          else:");
+  L.push("            # The setters above only take effect when a scan next starts, and start_scan_()");
+  L.push("            # early-returns unless the scanner is IDLE — so this only fires when coming");
+  L.push("            # back from \"Disabled\".");
+  L.push("            - if:");
+  L.push("                condition:");
+  L.push("                  lambda: 'return !id(ble_tracker).scan_running();'");
+  L.push("                then:");
+  L.push("                  - esp32_ble_tracker.start_scan: {continuous: true}");
+  return L.join("\n");
+}
+
+/* ───── STANDALONE ───── */
+function genStandalone(c){
+  var b = c.b, L = [];
+  L.push("# =============================================================================");
+  L.push("# "+devName(c)+" — filtering ESPHome Bluetooth proxy");
+  L.push("#");
+  L.push("# Generated by github.com/davidcoulson/esphome-ble-proxy — self-contained, no");
+  L.push("# packages required. Drop it in /config/esphome/ and flash.");
+  L.push("#");
+  L.push("# The point of this config is that it filters advertisements ON THE DEVICE,");
+  L.push("# before they cross the network. Core ESPHome's bluetooth_proxy forwards every");
+  L.push("# advertisement it hears — it has no RSSI, MAC or name filtering of any kind.");
+  L.push("# The external_components block below pulls a fork that adds it.");
+  L.push("# =============================================================================");
+  L.push("");
+  L.push("substitutions:");
+  L.push("  mac: "+c.mac);
+  L.push('  area: "'+c.area+'"');
+  L.push("");
+  L.push("esphome:");
+  L.push('  name: "'+b.prefix+'-${mac}"');
+  L.push('  friendly_name: "${area} Proxy ${mac}"');
+  L.push('  area: "${area}"');
+  L.push("  name_add_mac_suffix: false");
+  L.push("  # Fail fast on an older builder: this config uses 2026.9-era keys.");
+  L.push("  min_version: "+MIN_ESPHOME);
+  L.push("  # ESPHome requires a namespace here (\"author.project\"). Change the namespace to");
+  L.push("  # your own, and bump the version whenever you change this file — it surfaces as");
+  L.push("  # sensor.*_project_version, which is how you spot a node that missed an OTA.");
+  L.push("  project:");
+  L.push('    name: "bleproxy.'+(b.proj||"ble-proxy")+'"');
+  L.push('    version: "1.0.0"');
+  L.push("");
+  L.push("esp32:");
+  L.push("  variant: "+b.variant);
+  if (b.flash) L.push("  flash_size: "+b.flash);
+  if (b.cpu)   L.push("  cpu_frequency: "+b.cpu);
+  L.push("  # 10s task watchdog (the default is 5s). BLE scanning plus WiFi on one core");
+  L.push("  # makes the default too tight.");
+  L.push("  watchdog_timeout: 10s");
+  L.push("  framework:");
+  L.push("    type: esp-idf");
+  L.push("    advanced:");
+  L.push("      compiler_optimization: PERF");
+  L.push("    sdkconfig_options:");
+  L.push("      # BLE 4.2 is supported by every ESP32 with Bluetooth. Enable 5.0 on the");
+  L.push("      # derivatives (S3/C3/C5/C6) but not the original ESP32.");
+  L.push("      CONFIG_BT_BLE_42_FEATURES_SUPPORTED: y");
+  if (b.variant !== "esp32") L.push("      CONFIG_BT_BLE_50_FEATURES_SUPPORTED: y");
+  if (b.unicore) L.push("      CONFIG_FREERTOS_UNICORE: y");
+  if (!b.eth){
+    L.push("      # Coexistence stays ENABLED: this node runs a BLE proxy, so the coex");
+    L.push("      # scheduler is genuinely arbitrating WiFi against BLE rather than idling.");
+    L.push("      CONFIG_ESP_COEX_SW_COEXIST_ENABLE: y");
+    if (b.coex) L.push("      CONFIG_ESP_COEX_PREFER_WIFI: y");
+    if (b.ax)   L.push("      CONFIG_ESP_WIFI_11AX_SUPPORT: y  # shorter airtime per frame");
+  }
+  L.push("");
+  L.push("logger:");
+  L.push("  # baud_rate: 0 keeps logging but disables the serial port outright, freeing CPU");
+  L.push("  # and memory. Logs still reach the API and the local web UI.");
+  L.push("  baud_rate: 0");
+  L.push("  level: WARN");
+  L.push("");
+  L.push("# >> RE-SYNC THIS FORK ON EVERY ESPHOME VERSION BUMP. <<");
+  L.push("# It pins a copy of a fast-moving core component. Pinned by TAG, not a branch:");
+  L.push("# ref: main meant two devices flashed an hour apart could run different filter");
+  L.push("# code with no way to tell from the version string.");
+  L.push("external_components:");
+  L.push("  - source:");
+  L.push("      type: git");
+  L.push("      url: https://github.com/davidcoulson/esphome-bluetooth-proxy-filter");
+  L.push("      ref: "+FORK_TAG);
+  L.push("    components: [bluetooth_proxy]");
+  L.push("    # Short despite the pin: the cached clone under .esphome/external_components/");
+  L.push("    # is keyed per build host, and a stale one has served a build the wrong code.");
+  L.push("    # A tag is immutable, so re-checking it costs nothing.");
+  L.push("    refresh: 1min");
+  L.push("");
+  if (b.eth){
+    L.push("ethernet:");
+    L.push("  type: W5500");
+    if (b.ethPins === "xiao"){
+      L.push("  clk_pin: GPIO7");
+      L.push("  mosi_pin: GPIO9");
+      L.push("  miso_pin: GPIO8");
+      L.push("  cs_pin: GPIO2");
+      L.push("  interrupt_pin: GPIO10");
+      L.push("  # XIAO + W5500 has no reset line.");
+    } else {
+      L.push("  mosi_pin: GPIO11");
+      L.push("  miso_pin: GPIO12");
+      L.push("  clk_pin: GPIO13");
+      L.push("  cs_pin: GPIO14");
+      L.push("  reset_pin: GPIO9");
+      L.push("  interrupt_pin: GPIO10");
+    }
+    L.push("  clock_speed: 25MHz");
+    L.push("");
+    L.push("text_sensor:");
+    L.push("  - platform: ethernet_info");
+    L.push("    ip_address: {name: \"IP\", entity_category: diagnostic}");
+  } else {
+    L.push("wifi:");
+    L.push("  ssid: !secret wifi_ssid");
+    L.push("  password: !secret wifi_password");
+    L.push("  min_auth_mode: WPA2");
+    L.push("  # NONE, not the default: power save parks the radio between beacons, which on a");
+    L.push("  # board already sharing one antenna with BLE turns into dropped API traffic.");
+    L.push("  power_save_mode: NONE");
+    L.push("  output_power: 17dB");
+    L.push("  enable_btm: true");
+    L.push("  enable_rrm: true");
+    L.push("  # An ASSOCIATION watchdog — it recovers a wedged radio, but NOT \"associated but");
+    L.push("  # the gateway is unreachable\". See the gateway_watchdog component for that.");
+    L.push("  reboot_timeout: 5min");
+    if (c.band5){
+      L.push("  # 5 GHz takes WiFi off the band BLE scans, removing the contention entirely.");
+      L.push("  # This is why a C5 can run the Aggressive profile and a C3 cannot.");
+      L.push("  band_mode: 5GHZ");
+    }
+    L.push("");
+    L.push("text_sensor:");
+    L.push("  - platform: wifi_info");
+    L.push("    ip_address: {name: \"IP\", entity_category: diagnostic}");
+  }
+  L.push("  - platform: version");
+  L.push('    name: "ESPHome Version"');
+  L.push("    entity_category: diagnostic");
+  L.push("");
+  L.push(apiBlock(c));
+  L.push("");
+  L.push("ota:");
+  L.push("  - platform: esphome");
+  L.push("    password: !secret ota_key");
+  L.push("    on_begin:");
+  L.push("      # Frees the radio for the transfer. NOTE this CANNOT rescue a device that");
+  L.push("      # won't accept OTA at all: on_begin only fires once the OTA connection is");
+  L.push("      # established, and a BLE-saturated radio is exactly what stops it being");
+  L.push("      # established. For that case, boot to safe mode and flash there.");
+  L.push("      then:");
+  L.push("        - esp32_ble_tracker.stop_scan:");
+  L.push("");
+  L.push("mdns:");
+  L.push("safe_mode:");
+  L.push("");
+  L.push("button:");
+  L.push("  - platform: restart");
+  L.push('    name: "Restart"');
+  L.push("  - platform: safe_mode");
+  L.push("    # Boots WITHOUT BLE. This is how you flash a board whose radio is too busy to");
+  L.push("    # accept an OTA.");
+  L.push('    name: "Safe Mode"');
+  L.push("");
+  L.push(trackerBlock(c));
+  L.push("");
+  L.push(proxyBlock(c,""));
+  if (c.calib){ L.push(""); L.push(beaconBlock()); }
+  L.push("");
+  L.push(entitiesBlock(c));
+  L.push("");
+  return L.join("\n");
+}
+
+/* ───── FLEET ───── */
+function genFleet(c){
+  var b = c.b, L = [];
+  L.push("# "+devName(c)+" — BLE proxy");
+  L.push("# Generated by github.com/davidcoulson/esphome-ble-proxy");
+  L.push("#");
+  if (b.family){
+    L.push("# Everything real lives in common/. This file only says which hardware this is");
+    L.push("# and where it lives.");
+  } else {
+    L.push("# No family package for this board — few enough of them that the layers are");
+    L.push("# composed here directly.");
+  }
+  L.push("");
+  L.push("substitutions:");
+  L.push("  mac: "+c.mac);
+  L.push('  area: "'+c.area+'"');
+  if (b.modules) L.push('  module: "'+c.module+'"');
+  L.push("");
+  L.push("packages:");
+  if (b.family){
+    L.push("  device: !include common/"+b.family);
+  } else {
+    L.push("  gwwd: !include common/gateway-watchdog.yaml");
+    L.push("  djc: !include common/djc-common.yaml");
+    L.push("  platform: !include common/esp32-ble-platform.yaml");
+    L.push("  wifi: !include common/wifi.yaml");
+    L.push("  ble: !include common/ble-proxy.yaml");
+    L.push("  debug: !include common/debug-lite.yaml");
+    L.push("");
+    L.push("esphome:");
+    L.push('  name: "'+b.prefix+'-${mac}"');
+    L.push('  friendly_name: "${area} Proxy ${mac}"');
+    L.push('  area: "${area}"');
+    L.push("  project:");
+    L.push('    name: "dcoulson.'+(b.proj||"ble-proxy")+'"');
+    L.push('    version: "2026.09.17.0+ble${ble_proxy_version}"');
+    L.push("");
+    L.push("esp32:");
+    L.push("  variant: "+b.variant);
+    if (b.flash) L.push("  flash_size: "+b.flash);
+    if (b.cpu)   L.push("  cpu_frequency: "+b.cpu);
+    L.push("  framework:");
+    L.push("    sdkconfig_options:");
+    L.push("      # Coexistence stays ENABLED: this node runs a BLE proxy, so the coex");
+    L.push("      # scheduler is genuinely arbitrating WiFi against BLE rather than idling.");
+    L.push("      CONFIG_ESP_COEX_SW_COEXIST_ENABLE: y");
+    if (b.coex) L.push("      CONFIG_ESP_COEX_PREFER_WIFI: y");
+    if (b.ax)   L.push("      CONFIG_ESP_WIFI_11AX_SUPPORT: y");
+  }
+  if (b.eth && b.ethPins === "xiao"){
+    L.push("");
+    L.push("# The XIAO's W5500 wiring differs from the Waveshare pinout common/eth.yaml");
+    L.push("# defaults to, and it has no reset line.");
+    L.push("ethernet:");
+    L.push("  clk_pin: GPIO7");
+    L.push("  mosi_pin: GPIO9");
+    L.push("  miso_pin: GPIO8");
+    L.push("  cs_pin: GPIO2");
+    L.push("  interrupt_pin: GPIO10");
+    L.push("  reset_pin: !remove");
+  }
+  if (c.band5){
+    L.push("");
+    L.push("wifi:");
+    L.push("  # 5 GHz takes WiFi off the band BLE scans, removing the contention entirely.");
+    L.push("  band_mode: 5GHZ");
+  }
+
+  /* per-device filter overrides, only where they differ from the package */
+  var ov = [];
+  if (c.rssi !== -75)  ov.push("  rssi_threshold: "+c.rssi);
+  if (c.floor !== -90) ov.push("  rssi_floor: "+c.floor);
+  if (!c.apple)        ov.push("  manufacturer_blocklist: []   # Apple filtering off for this node");
+  if (!c.nonres)       ov.push("  drop_non_resolvable: false");
+  if (c.macs.length){
+    ov.push("  mac_allowlist:");
+    c.macs.forEach(function(m){ ov.push('    - "'+m+'"'); });
+  }
+  if (ov.length){
+    L.push("");
+    L.push("# Per-device overrides of common/ble-proxy.yaml. Everything not listed here");
+    L.push("# comes from the shared package — change it there to change the whole fleet.");
+    L.push("bluetooth_proxy:");
+    L.push(ov.join("\n"));
+  }
+  L.push("");
+  return L.join("\n");
+}
+
+/* ───── secrets ───── */
+function genSecrets(c){
+  var L = [];
+  L.push("# Append to /config/esphome/secrets.yaml. NEVER commit this file — and note that");
+  L.push("# `secrets.yaml` alone is not a sufficient .gitignore entry, because timestamped");
+  L.push("# copies accumulate next to it. Use `secrets.yaml*`.");
+  L.push("");
+  if (!c.b.eth){
+    L.push("wifi_ssid: \"YourSSID\"");
+    L.push("wifi_password: \"YourWiFiPassword\"");
+  }
+  L.push("");
+  L.push("# Generate with:  openssl rand -base64 32");
+  L.push('api_key_ble_proxy: "REPLACE-WITH-BASE64-32-BYTE-KEY=="');
+  L.push('ota_key: "your-ota-password"');
+  if (c.irk && c.irkN > 0){
+    L.push("");
+    L.push("# --- Identity Resolving Keys -------------------------------------------------");
+    L.push("# One per phone/watch you want forwarded. 32 hex characters each.");
+    L.push("#");
+    L.push("# Where to get them:");
+    L.push("#   * Home Assistant > Settings > Devices > Private BLE Device — the IRK you");
+    L.push("#     already entered there is the same value. Easiest source by far, and you");
+    L.push("#     want the two lists mirrored anyway.");
+    L.push("#   * Flash config/common/irk-capture-base.yaml to a spare ESP32 / S2 / S3 and");
+    L.push("#     pair the phone to it. NOT a C3/C6/H2 — that component needs Bluedroid.");
+    L.push("#   * Android, rooted: /data/misc/bluedroid/bt_config.conf");
+    L.push("#");
+    L.push("# A missing key is harmless (that device is simply not protected). A wrong one is");
+    L.push("# harmless too — it just never matches.");
+    for (var i=1;i<=c.irkN;i++)
+      L.push("ble_irk_"+i+': "00112233445566778899aabbccddeeff"');
+  }
+  if (!c.macs.length){
+    L.push("");
+    L.push("# --- Tracked tags ------------------------------------------------------------");
+    L.push("# MACs that bypass every filter except the floor. Reference this from the config");
+    L.push("# with `mac_allowlist: !secret ble_pet_tag_macs` if you'd rather keep the list");
+    L.push("# out of git — the whole YAML list is substituted.");
+    L.push("ble_pet_tag_macs:");
+    L.push('  - "AA:BB:CC:DD:EE:01"');
+    L.push('  - "AA:BB:CC:DD:EE:02"');
+  }
+  L.push("");
+  return L.join("\n");
+}
+
+/* ───── next steps pane ───── */
+function genNext(c){
+  var n = devName(c), h = [];
+  h.push('<ol class="steps">');
+  if (mode === "fleet"){
+    h.push("<li>Make sure <code>common/</code> from the repo is in <code>/config/esphome/</code>. "+
+      "The shared packages assume ids like <code>id_ota</code>, <code>ble_tracker</code> and "+
+      "<code>ble_proxy</code> exist — read <a href='https://github.com/davidcoulson/esphome-ble-proxy/blob/main/docs/architecture.md'>architecture.md</a> before merging into an existing setup.</li>");
+  }
+  h.push("<li>Save the device config as <code>/config/esphome/"+esc(n)+".yaml</code>.</li>");
+  h.push("<li>Add the <b>secrets.yaml</b> tab's contents to <code>/config/esphome/secrets.yaml</code>"+
+    (c.irk && c.irkN ? " and fill in the real IRKs — or delete those lines for now, an empty list just turns IRK filtering off." : ".")+"</li>");
+  h.push("<li>Flash once over USB: <code>esphome run /config/esphome/"+esc(n)+".yaml</code>, or "+
+    "<b>Install → Plug into this computer</b> in the dashboard. Everything after this is over the air. "+
+    "The first build compiles ESP-IDF, so give it a while.</li>");
+  h.push("<li>Adopt it: Settings → Devices &amp; Services → <b>ESPHome</b> → Configure, and paste the "+
+    "encryption key. Home Assistant registers it as a Bluetooth adapter automatically.</li>");
+  h.push("<li>Check it works. Wait a minute, then look at <b>BLE Adverts Forwarded</b> (above zero) "+
+    "and <b>BLE Advert Drop Rate</b> (50–70% is healthy).</li>");
+  h.push("</ol>");
+
+  var notes = [];
+  if (!c.irk || !c.irkN)
+    notes.push(["warn","No IRKs configured.","Other people's phones and watches will be forwarded — "+
+      "typically over half of all traffic. This is the single biggest win available and costs you no range. "+
+      "<a href='https://github.com/davidcoulson/esphome-ble-proxy/blob/main/docs/filtering.md#getting-your-irks'>How to get them →</a>"]);
+  if (c.profile !== "Balanced" && !c.b.eth && !c.band5)
+    notes.push(["warn","The "+c.profile+" profile on a shared radio.","WiFi and BLE use one antenna on this "+
+      "board. At 75% duty this starved WiFi badly enough to break ping and OTA — while the access point still "+
+      "reported a perfect link. If the node becomes unreachable, boot to safe mode to flash it."]);
+  if (c.rssi > -70)
+    notes.push(["warn","A threshold of "+c.rssi+" dBm is tight.","Roughly "+
+      (Math.pow(10,(-55-c.rssi)/30)).toFixed(1)+" m of usable range. Devices beyond that go missing from "+
+      "Home Assistant entirely, not just from Bermuda."]);
+  if (c.apple && !c.findmy)
+    notes.push(["","AirTags and FindMy tags will be dropped.","They advertise under Apple's company id, so the "+
+      "blocklist takes them. Tick \"keep AirTags\" if you track any."]);
+  if (c.calib && !c.apple)
+    notes.push(["","Calibration beacons need no carve-out here.","With Apple filtering off, nothing is dropping "+
+      "your iBeacons, so no <code>allow_ibeacon</code> rule is emitted."]);
+  notes.push(["","Tuning is live.","<b>BLE RSSI Threshold</b> and <b>BLE Scan Profile</b> are Home Assistant "+
+    "entities — no reflash. Leave it a day, then tune against the drop rate. "+
+    "<a href='https://github.com/davidcoulson/esphome-ble-proxy/blob/main/docs/tuning.md'>tuning.md →</a>"]);
+  notes.push(["","Adding a new BLE device later?","Scanning is passive, so many devices are undiscoverable by "+
+    "name. Flip <b>BLE Active Scan (onboarding)</b> on, add it, flip it off."]);
+
+  notes.forEach(function(x){
+    h.push('<div class="note'+(x[0]==="warn"?" warn":"")+'"><b>'+x[1]+'</b> '+x[2]+'</div>');
+  });
+  return h.join("");
+}
+
+/* ───── render ───── */
+var current = {text:"", name:""};
+function render(){
+  var c = cfg(), b = c.b;
+
+  $("boardhint").textContent = b.hint;
+  $("modulewrap").hidden = !b.modules;
+  $("bandwrap").hidden = !b.band;
+  $("irkwrap").hidden = !c.irk;
+  $("findmyWrap").hidden = !$("fApple").checked;
+  $("modehint").textContent = mode === "standalone"
+    ? "One file, nothing else needed. Everything inline, heavily commented. Pick this if you're setting up a proxy from scratch."
+    : "A short device file that includes the shared packages from this repo's config/common/. Pick this if you're adding to the fleet.";
+  $("rssihint").innerHTML = "≈ " + (Math.pow(10,(-55-c.rssi)/30)).toFixed(1) +
+    " m of usable range (ref_power −55, attenuation 3). −75 is the fleet default; −85 is looser and safer if devices go missing.";
+  $("profhint").textContent = b.eth || c.band5
+    ? "No radio contention on this board — Aggressive is safe here."
+    : "WiFi and BLE share one radio on this board. Balanced (37.5%) is the only profile that reliably leaves WiFi usable.";
+
+  var text, name;
+  if (tab === "secrets"){ text = genSecrets(c); name = "secrets.yaml (append)"; }
+  else if (tab === "next"){ text = null; name = devName(c)+".yaml"; }
+  else {
+    text = (mode === "standalone") ? genStandalone(c) : genFleet(c);
+    name = devName(c)+".yaml";
+  }
+
+  $("fname").textContent = name;
+  if (text === null){
+    $("out").hidden = true; $("nextpane").hidden = false;
+    $("nextpane").innerHTML = genNext(c);
+    $("copy").disabled = true; $("dl").disabled = true;
+  } else {
+    $("out").hidden = false; $("nextpane").hidden = true;
+    $("out").textContent = text;
+    $("copy").disabled = false; $("dl").disabled = false;
+    current.text = text;
+    current.name = (tab === "secrets") ? "secrets.yaml" : devName(c)+".yaml";
+  }
+}
+
+/* ───── wiring ───── */
+function fillModules(){
+  var b = BOARDS[$("board").value], sel = $("module");
+  sel.innerHTML = "";
+  if (!b.modules) return;
+  Object.keys(b.modules).forEach(function(k){
+    var o = document.createElement("option");
+    o.value = k; o.textContent = b.modules[k]; sel.appendChild(o);
+  });
+}
+$("board").addEventListener("change", function(){
+  var b = BOARDS[$("board").value];
+  fillModules();
+  if (b.prof) $("profile").value = b.prof;
+  render();
+});
+$("f").addEventListener("input", render);
+$("f").addEventListener("change", render);
+
+document.querySelectorAll(".seg button").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    mode = btn.dataset.mode;
+    document.querySelectorAll(".seg button").forEach(function(x){
+      x.setAttribute("aria-pressed", String(x === btn));
+    });
+    render();
+  });
+});
+document.querySelectorAll(".tabs button").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    tab = btn.dataset.tab;
+    document.querySelectorAll(".tabs button").forEach(function(x){
+      x.setAttribute("aria-selected", String(x === btn));
+    });
+    render();
+  });
+});
+
+$("copy").addEventListener("click", function(){
+  var done = function(){
+    var t = $("copied"); t.hidden = false;
+    setTimeout(function(){ t.hidden = true; }, 1600);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(current.text).then(done, fallback);
+  } else fallback();
+  function fallback(){
+    var ta = document.createElement("textarea");
+    ta.value = current.text; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); done(); } catch(e){}
+    document.body.removeChild(ta);
+  }
+});
+$("dl").addEventListener("click", function(){
+  var blob = new Blob([current.text], {type:"text/yaml"});
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = current.name;
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); document.body.removeChild(a); }, 0);
+});
+
+fillModules();
+$("profile").value = BOARDS[$("board").value].prof || "Balanced";
+render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+
+esphome:
+  name: "shelly-${mac}"
+  friendly_name: "${area} Shelly ${mac}"
+  area: "${area}"
+  project:
+    name: "dcoulson.ble-shelly-esp32"
+    version: "2026.09.17.0+ble${ble_proxy_version}"
+
+esp32:
+  variant: esp32
+  # 160 MHz as the first-class key. It replaces platformio_options
+  # board_build.f_cpu (a no-op under the esp-idf toolchain, the default since
+  # 2026.7) and the CONFIG_ESP32_DEFAULT_CPU_FREQ_* pair - the pre-IDF-5
+  # spellings, which IDF's sdkconfig.rename map was still honouring. Verified
+  # 2026-09-16: the binary is byte-identical in size before and after
+  # (71058 B RAM / 1253863 B flash on shelly-0af6c0), so this is a spelling
+  # change, not a clock change.
+  cpu_frequency: 160MHz
+  framework:
+    advanced:
+      sram1_as_iram: true
+      minimum_chip_revision: "3.1"
+      compiler_optimization: PERF
+    sdkconfig_options:
+      CONFIG_FREERTOS_UNICORE: y
+
+logger:
+  # baud_rate: 0 disables the serial port outright, which makes
+  # hardware_uart moot - it named UART0 for a port never opened.
+  baud_rate: 0
+
+packages:
+  gwwd: !include gateway-watchdog.yaml
+  djc: !include djc-common.yaml
+  ble: !include ble-proxy.yaml
+  wifi: !include wifi.yaml
+  debug: !include debug-lite.yaml
+
+status_led:
+  pin:
+    number: 0
+    inverted: true
+
+api:
+  batch_delay: 1s

@@ -1,0 +1,150 @@
+substitutions:
+  board:
+    3: 
+      variant: esp32c3
+      project: wroom03
+    6:
+      variant: esp32c3
+      project: wroom06
+    c6: 
+      variant: esp32c6
+      project: wt0132c6
+  pins:
+    3:
+      up_rly: GPIO3
+      dn_rly: GPIO5
+      up_btn: GPIO6
+      dn_btn: GPIO1
+      up_led: GPIO7
+      dn_led: GPIO4
+      status_led: GPIO2
+    6:
+      up_rly: GPIO10
+      dn_rly: GPIO7
+      up_btn: GPIO6
+      dn_btn: GPIO3
+      up_led: GPIO1
+      dn_led: GPIO19
+      status_led: GPIO2
+    c6:
+      up_rly: GPIO7   #IO3
+      dn_rly: GPIO4   #IO5
+      up_btn: GPIO10  #IO6
+      dn_btn: GPIO2   #IO1
+      up_led: GPIO8   #IO7
+      dn_led: GPIO6   #IO4
+      status_led: GPIO5 #EN
+
+packages:
+  gwwd: !include gateway-watchdog.yaml
+  djc: !include djc-common.yaml
+  platform: !include esp32-ble-platform.yaml
+  wifi: !include wifi.yaml
+  ble: !include ble-proxy.yaml
+  debug: !include debug-lite.yaml
+
+esphome:
+  name: "rrn00-${mac}"
+  friendly_name: "${area} RRN00 ${mac}"
+  area: "${area}"
+  project:
+    name: dcoulson.ble-rrn00-${board['${module}']['project']}
+    version: "2026.09.17.0+ble${ble_proxy_version}"
+
+esp32:
+  variant: ${board["variant"] if board["variant"] is defined else board["${module}"]["variant"]}
+  flash_size: 4MB
+  framework:
+    sdkconfig_options:
+      # The sdkconfig trims live in esp32-ble-platform.yaml. Only the
+      # coexistence pair is per-family: it stays ENABLED here because
+      # esp32_ble below is a real second user of the radio (this node is
+      # also a BLE proxy), so the coex scheduler is doing actual work
+      # arbitrating WiFi against BLE rather than idling.
+      CONFIG_ESP_COEX_SW_COEXIST_ENABLE: y
+      CONFIG_ESP_COEX_PREFER_WIFI: y
+
+esp32_ble:
+  # advertising was false here. It is ON now because BPS receiver
+  # auto-calibration needs every probe to beacon: the proxies range each
+  # other, and comparing those probe-to-probe distances against their placed
+  # positions is what reveals each receiver's error. See esp32_ble_beacon in
+  # ble-proxy.yaml. A 500-1000ms beacon is negligible airtime next to the
+  # 37.5% scan duty cycle already running here.
+  advertising: true
+  max_connections: 5
+  
+logger:
+  # baud_rate: 0 disables the serial port outright, which makes
+  # hardware_uart moot - it used to name UART0 for a port that is never
+  # opened. Logs still reach the API and the local web UI.
+  baud_rate: 0
+
+api:
+  batch_delay: 500ms
+
+binary_sensor:
+  - platform: gpio
+    # Upper switch button SW1 shorts P6 low when pressed.
+    id: up_btn
+    pin:
+      number: ${pins["up_btn"] if pins["up_btn"] is defined else pins["${module}"]["up_btn"]}
+      mode: INPUT_PULLUP
+      inverted: True
+    on_press:
+      - switch.toggle: up_rly
+
+  - platform: gpio
+    # Lower switch button SW2 shorts P8 low when pressed.
+    id: dn_btn
+    pin:
+      number: ${pins["dn_btn"] if pins["dn_btn"] is defined else pins["${module}"]["dn_btn"]}
+      mode: INPUT_PULLUP
+      inverted: True
+    on_press:
+      - switch.toggle: dn_rly
+
+switch:
+  - platform: gpio
+    name: "Upper Outlet"
+    pin: ${pins["up_rly"] if pins["up_rly"] is defined else pins["${module}"]["up_rly"]}
+    id: up_rly
+    icon: mdi:power-socket-us
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - switch.turn_on: up_led
+      - delay: 2s
+      - switch.turn_off: up_led
+    on_turn_off:
+      - switch.turn_off: up_led
+
+  - platform: gpio
+    name: "Lower Outlet"
+    pin: ${pins["dn_rly"] if pins["dn_rly"] is defined else pins["${module}"]["dn_rly"]}
+    id: dn_rly
+    icon: mdi:power-socket-us
+
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - switch.turn_on: dn_led
+      - delay: 2s
+      - switch.turn_off: dn_led
+    on_turn_off:
+      - switch.turn_off: dn_led
+
+  - platform: gpio
+    pin: ${pins["up_led"] if pins["up_led"] is defined else pins["${module}"]["up_led"]}
+    id: up_led
+
+  - platform: gpio
+    pin: ${pins["dn_led"] if pins["dn_led"] is defined else pins["${module}"]["dn_led"]}
+    id: dn_led
+
+status_led:
+  pin:
+    number: ${pins["status_led"] if pins["status_led"] is defined else pins["${module}"]["status_led"]}
+    inverted: no
+    # GPIO2 on the WROOM-03/06 modules is a strapping pin; the board wires
+    # the status LED there, so the validator's warning is noise (46 per
+    # fleet sweep). Harmless on the C6 module where the LED is on GPIO5.
+    ignore_strapping_warning: true

@@ -1,0 +1,37 @@
+
+esphome:
+  name: "ble-esp32-eth-${mac}"
+  friendly_name: "${area} ETH ${mac}"
+  area: "${area}"
+  name_add_mac_suffix: false
+  project:
+    name: "dcoulson.ble-proxy-eth"
+    version: "2026.09.17.0+ble${ble_proxy_version}"
+
+esp32:
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    advanced:
+      compiler_optimization: PERF
+
+packages:
+  djc: !include djc-common.yaml
+  ble: !include ble-proxy.yaml
+  eth: !include eth.yaml
+  debug: !include debug-lite.yaml
+
+esp32_ble:
+  max_connections: 5
+
+bluetooth_proxy:
+  connection_slots: 5
+
+api:
+  # 300s ON PURPOSE (djc-common.yaml's default is now 0s). This is an
+  # Ethernet node: no wifi.yaml reboot_timeout and no gateway watchdog, so
+  # the API timeout is its only automatic recovery from "link up but
+  # unreachable". The cost is a reboot during any 5-minute HA outage, which
+  # is accepted for these nodes. See CLAUDE.md.
+  reboot_timeout: 300s
+  batch_delay: 500ms

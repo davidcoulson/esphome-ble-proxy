@@ -1,0 +1,7 @@
+# CloudFree SW1 smart switch (ESP8685) running a BLE proxy alongside its relay.
+substitutions:
+  mac: a1b2c3
+  area: "Porch"
+
+packages:
+  cfsw1: !include ../common/cf-sw1-esp8685.yaml

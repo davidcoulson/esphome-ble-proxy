@@ -1,0 +1,13 @@
+# RRN00 in-wall dual outlet (ESP32-C3 WROOM-03/06, or ESP32-C6 WT0132C6).
+# The whole device file is four substitutions and one package include.
+#
+#   module: 3  = WROOM-03 pinout   (esp32c3)
+#           6  = WROOM-06 pinout   (esp32c3)
+#           c6 = WT0132C6 pinout   (esp32c6)
+substitutions:
+  mac: a1b2c3          # last 6 hex digits of the device MAC
+  area: "Living Room"  # Home Assistant area
+  module: "6"
+
+packages:
+  rrn00: !include ../common/rrn00.yaml

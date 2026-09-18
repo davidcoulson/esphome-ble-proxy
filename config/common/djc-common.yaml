@@ -1,0 +1,204 @@
+
+# Pull in the required ESP-IDF header file
+esphome:
+  name_add_mac_suffix: false
+  # The packages use 2026.9-era keys (watchdog_timeout, assertion_level,
+  # cpu_frequency) and an IDF-6-only lambda; fail fast on an older builder.
+  min_version: 2026.9.0
+#  includes:
+#    - <esp_bootloader_desc.h>
+#  environment_variables:
+#    ESPHOME_ESP_IDF_PREFIX: /config/.esphome/idf
+    
+esp32:
+  # 10s task watchdog (default 5s). Was CONFIG_ESP_TASK_WDT_TIMEOUT_S: "10"
+  # under sdkconfig_options; this is the first-class key for the same thing.
+  watchdog_timeout: 10s
+  framework:
+    # ESP-IDF 6.1.0 ON PURPOSE. ESPHome 2026.9.0's "recommended" is 5.5.5, so
+    # every build prints "The selected framework version is not the
+    # recommended one" - expected, ignore it. The Bootloader Version sensor
+    # below uses the IDF 6 signature of esp_ota_get_bootloader_description()
+    # and will not build on 5.x. (toolchain: esp-idf is the default since
+    # 2026.7 and is no longer stated.)
+    version: 6.1.0
+    type: esp-idf
+
+# ---------------------------------------------------------------------------
+# DEFAULTS TRIMMED 2026-09-16. Until then this file shipped "sensor node"
+# defaults (INFO logging, API-driven reboot after 300s, an SNTP client, every
+# diagnostic exposed) and every family overrode the same five things back:
+#
+#   logger.level WARN        - ESPHome strips log calls above the configured
+#                              level at compile time, so INFO strings were
+#                              paying flash for nothing on ~90 nodes.
+#   api.reboot_timeout 0s    - "Home Assistant went away for 5 minutes" is
+#                              not "this node is broken": a core upgrade or
+#                              recorder migration rebooted the whole fleet at
+#                              once, and lights came back dark. wifi.yaml's
+#                              5min reboot_timeout still recovers a wedged
+#                              radio and gateway-watchdog.yaml covers
+#                              "associated but unreachable". Ethernet nodes
+#                              have neither, so THEY set 300s explicitly.
+#   no SNTP                  - nothing on these nodes reads the wall clock;
+#                              it was a socket and a 6h poll for no consumer.
+#                              Home Assistant remains the time source.
+#   diagnostic trim          - Uptime text every 900s not 120s (cosmetic
+#                              formatting; the underlying esp32_uptime_sec is
+#                              internal and stays at 60s); Project Name and
+#                              Bootloader are static per build so are
+#                              internal (still on the local web UI).
+#   factory reset internal   - wipes WiFi credentials and needs physical
+#                              access to undo; not one stray tap away in HA.
+#
+# Those are now the defaults here. A config that genuinely wants the old
+# behaviour includes djc-legacy.yaml after this file.
+# ---------------------------------------------------------------------------
+logger:
+  level: WARN
+
+ota:
+  - platform: esphome
+    id: id_ota
+    allow_partition_access: true
+
+api:
+  id: my_api
+  reboot_timeout: 0s
+  # batch_delay is intentionally not set here: ESPHome's own default is
+  # already 100ms (api/__init__.py, cv.Optional(CONF_BATCH_DELAY,
+  # default="100ms")), so stating it bought nothing but implied it had
+  # been tuned. The packages that genuinely tune it - govee (250ms) and
+  # rrn00 / s2224 (500ms, the chatty BLE-proxy nodes) - set it locally,
+  # where the value sits next to the reason for it.
+
+mdns:
+
+web_server:
+  version: 2
+  local: true
+
+safe_mode:
+
+button:
+  - platform: factory_reset
+    # id added purely so individual packages can !extend this button
+    # (e.g. to mark it internal on devices where an accidental press is
+    # expensive). No behaviour change on its own.
+    id: factory_reset_btn
+    icon: mdi:fire-alert
+    name: Factory Reset
+    internal: true
+  - platform: restart
+    id: reboot_btn
+    icon: mdi:restart
+    name: Restart
+  - platform: safe_mode
+    name: Safe Mode
+
+sensor:
+  # https://esphome.io/components/sensor/uptime
+  - platform: uptime
+    id: esp32_uptime_sec
+    # 10s, not 60s: this is the clock the adaptive publisher below reads, and
+    # it cannot publish fresher than this sensor is sampled. internal: true by
+    # omission of a name, so none of it reaches Home Assistant.
+    update_interval: 10s
+  # https://esphome.io/components/sensor/internal_temperature
+  - platform: internal_temperature
+    name: Internal temperature
+    id: esp32_internal_temperature
+    entity_category: diagnostic
+    filters:
+      - sliding_window_moving_average:
+          window_size: 60
+          send_every: 60
+
+text_sensor:
+  - platform: version
+    name: "ESPHome Version"
+  - platform: template
+    name: Uptime
+    id: esp32_uptime
+    # Driven by the adaptive interval: at the bottom of this file, so that a
+    # freshly booted node reports every 10s instead of hiding a reboot for up
+    # to 15 minutes. Settles to 600s once the node has been up an hour.
+    update_interval: never
+    icon: mdi:clock-start
+    entity_category: diagnostic
+    lambda: |-
+      int uptime_sec = id(esp32_uptime_sec).state;
+      int days = uptime_sec / 86400;
+      int hours = (uptime_sec % 86400) / 3600;
+      int minutes = (uptime_sec % 3600) / 60;
+      int seconds = uptime_sec % 60;
+      return {
+        (
+          (days ? std::to_string(days) +"d " : "") +
+          (hours ? std::to_string(hours) +"h " : "") +
+          (minutes ? std::to_string(minutes) +"m " : "") +
+          (std::to_string(seconds) +"s")
+        ).c_str()
+      };
+  - platform: template
+    name: Project Name
+    id: project_name_sensor
+    icon: "mdi:folder-file"
+    entity_category: diagnostic
+    internal: true
+    update_interval: 24h
+    lambda: |-
+      std::string full_name = ESPHOME_PROJECT_NAME;
+      size_t dot_pos = full_name.find('.');
+      if (dot_pos != std::string::npos) {
+        return {full_name.substr(dot_pos + 1)};
+      }
+      return {full_name};
+  - platform: template
+    name: Project Version
+    id: project_version_sensor
+    icon: "mdi:git"
+    entity_category: diagnostic
+    update_interval: 24h
+    lambda: |-
+      return std::string(ESPHOME_PROJECT_VERSION);
+  - platform: template
+    name: "Bootloader Version"
+    id: bootloader_version_sensor
+    entity_category: diagnostic
+    internal: true
+    icon: "mdi:chip"
+    update_interval: 24h
+    lambda: |-
+      esp_bootloader_desc_t desc;
+      
+      // ESP-IDF 6.0+ requires passing the partition pointer. 
+      // Passing nullptr defaults it to the primary bootloader partition.
+      esp_err_t err = esp_ota_get_bootloader_description(nullptr, &desc);
+      
+      if (err == ESP_OK) {
+        return std::string(desc.idf_ver);
+      } else {
+        return std::string("Unknown/Error");
+      }
+
+# Adaptive Uptime publishing. A fixed 900s interval meant a node that had
+# just rebooted could sit on a stale value for a quarter of an hour, which is
+# exactly the window in which a reflash is worth watching. Bands: 10s for the
+# first 5 minutes, 30s to 15 minutes, 60s to an hour, then 600s - slower than
+# the old 900s default for the 99% of the time a node is simply up.
+interval:
+  - interval: 10s
+    then:
+      - lambda: |-
+          static uint32_t next_pub = 0;
+          uint32_t up = (uint32_t) id(esp32_uptime_sec).state;
+          uint32_t period = up < 300 ? 10 : (up < 900 ? 30 : (up < 3600 ? 60 : 600));
+          if (up >= next_pub) {
+            next_pub = up + period;
+            id(esp32_uptime).update();
+          }
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time

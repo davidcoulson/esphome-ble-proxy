@@ -1,0 +1,16 @@
+# ESPHome build artefacts
+/.esphome/
+**/.esphome/
+
+# Secrets - the bare name is NOT enough: timestamped copies accumulate next to
+# it (secrets.yaml.bak-20260911-144828 and the like) and hold the real WiFi
+# password, every api/ota key and every IRK in plain text.
+secrets.yaml
+secrets.yaml*
+!secrets.yaml.example
+
+# Local backup snapshots
+.bak-*/
+*.bak-*
+
+.DS_Store

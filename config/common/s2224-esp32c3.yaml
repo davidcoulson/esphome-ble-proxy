@@ -1,0 +1,87 @@
+substitutions:
+  pins:
+    xh-c3f:
+      up_rly: GPIO19
+      dn_rly: GPIO18
+      up_btn: GPIO4
+      status_led: GPIO5
+    esp8685:
+      up_rly: GPIO3
+      dn_rly: GPIO10
+      up_btn: GPIO5
+      status_led: GPIO6
+
+packages:
+  gwwd: !include gateway-watchdog.yaml
+  djc: !include djc-common.yaml
+  platform: !include esp32-ble-platform.yaml
+  wifi: !include wifi.yaml
+  ble: !include ble-proxy.yaml
+  debug: !include debug-lite.yaml
+
+esphome:
+  name: "s2224-${mac}"
+  friendly_name: "${area} s2224 ${mac}"
+  area: ${area}
+  project:
+    name: "dcoulson.ble-s2224-esp8685"
+    version: "2026.09.17.0+ble${ble_proxy_version}"
+
+esp32:
+  variant: esp32c3
+  flash_size: 4MB
+  framework:
+    sdkconfig_options:
+      # The sdkconfig trims live in esp32-ble-platform.yaml. Only the
+      # coexistence pair is per-family: it stays ENABLED here because
+      # esp32_ble below is a real second user of the radio (this node is
+      # also a BLE proxy), so the coex scheduler is doing actual work
+      # arbitrating WiFi against BLE rather than idling.
+      CONFIG_ESP_COEX_SW_COEXIST_ENABLE: y
+      CONFIG_ESP_COEX_PREFER_WIFI: y
+
+esp32_ble:
+  # advertising was false here. It is ON now because BPS receiver
+  # auto-calibration needs every probe to beacon: the proxies range each
+  # other, and comparing those probe-to-probe distances against their placed
+  # positions is what reveals each receiver's error. See esp32_ble_beacon in
+  # ble-proxy.yaml. A 500-1000ms beacon is negligible airtime next to the
+  # 37.5% scan duty cycle already running here.
+  advertising: true
+  max_connections: 5
+  
+logger:
+  # baud_rate: 0 disables the serial port outright, which makes
+  # hardware_uart moot - it used to name UART0 for a port that is never
+  # opened. Logs still reach the API and the local web UI.
+  baud_rate: 0
+
+api:
+  batch_delay: 500ms
+
+binary_sensor:
+  - platform: gpio
+    pin: ${pins["up_btn"] if pins["up_btn"] is defined else pins["${module}"]["up_btn"]}
+    id: upper_button
+    on_press:
+      then:
+        - switch.toggle: upper_outlet
+
+switch:
+  - platform: gpio
+    pin: ${pins["up_rly"] if pins["up_rly"] is defined else pins["${module}"]["up_rly"]}
+    name: "Upper Outlet"
+    icon: mdi:power-socket-us
+    id: upper_outlet
+    restore_mode: RESTORE_DEFAULT_ON
+  - platform: gpio
+    pin: ${pins["dn_rly"] if pins["dn_rly"] is defined else pins["${module}"]["dn_rly"]}
+    name: "Lower Outlet"
+    icon: mdi:power-socket-us
+    id: lower_outlet
+    restore_mode: ALWAYS_ON
+
+status_led:
+  pin:
+    number: ${pins["status_led"] if pins["status_led"] is defined else pins["${module}"]["status_led"]}
+    inverted: true

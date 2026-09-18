@@ -1,0 +1,62 @@
+
+esphome:
+  name: "cf-sw1-${mac}"
+  friendly_name: "${area} cf-sw1 ${mac}"
+  area: "${area}"
+  name_add_mac_suffix: false
+  project:
+    name: "dcoulson.ble-cfsw1-esp8685"
+    version: "2026.09.17.0+ble${ble_proxy_version}"
+
+esp32:
+  variant: esp32c3
+  framework:
+    sdkconfig_options:
+      # The sdkconfig trims live in esp32-ble-platform.yaml; only the
+      # coexistence setting is per-family.
+      # Coexistence stays ENABLED here: this node runs a BLE proxy, so
+      # the coex scheduler is genuinely arbitrating WiFi against BLE
+      # rather than idling. Contrast the light packages, where it is off.
+      CONFIG_ESP_COEX_SW_COEXIST_ENABLE: y
+
+packages:
+  gwwd: !include gateway-watchdog.yaml
+  djc: !include djc-common.yaml
+  platform: !include esp32-ble-platform.yaml
+  wifi: !include wifi.yaml
+  ble: !include ble-proxy.yaml
+  debug: !include debug-lite.yaml
+
+logger:
+  # baud_rate: 0 disables the serial port outright, making
+  # hardware_uart moot - it named UART0 for a port never opened.
+  baud_rate: 0
+
+status_led:
+  pin:
+    number: GPIO5
+    inverted: true
+
+output:
+  - platform: gpio
+    id: relay_1
+    pin: GPIO2
+
+light:
+  - platform: binary
+    id: light_1
+    icon: mdi:light-switch
+    restore_mode: RESTORE_DEFAULT_OFF
+    name: Light
+    output: relay_1 
+
+binary_sensor:
+  - platform: gpio
+    pin: GPIO4
+    id: reset
+    internal: true
+    filters:
+      - invert:
+      - delayed_off: 10ms
+    on_press:
+      - light.toggle: light_1

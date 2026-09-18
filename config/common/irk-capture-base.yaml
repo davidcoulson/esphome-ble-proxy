@@ -1,0 +1,164 @@
+---
+# Generic ESP32 IRK Capture Package
+# This package provides IRK capture functionality for ESP32 devices
+# Device YAML must provide substitutions: device_name, friendly_name, api_key, ota_password, esp32_variant, esp32_board, ble_name
+
+esp32:
+  # Bluedroid stack with ESP-IDF. Use ESP32 / S2 / S3. Do NOT use C3/C6/H2 (NimBLE-only).
+  variant: ${esp32_variant}
+  framework:
+    type: esp-idf
+    version: recommended
+    sdkconfig_options:
+      CONFIG_BT_ENABLED: "y"
+      CONFIG_BT_BLUEDROID_ENABLED: "y"
+      CONFIG_BT_NIMBLE_ENABLED: "n"
+      # Roles: peripheral/broadcaster are sufficient here
+      CONFIG_BT_GATTS_ENABLE: "y"
+      CONFIG_BT_GATTC_ENABLE: "n"
+      CONFIG_BT_BLE_50_FEATURES_SUPPORTED: "y"
+  # If board resolution fails, pin a newer platform release:
+  # platformio_options:
+  #   platform: espressif32@6.8.1
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+# IMPORTANT: Do NOT include esp32_ble:, esp32_ble_tracker:, or bluetooth_proxy: here.
+# The irk_capture component fully initializes and manages the Bluedroid BLE stack
+# itself (CONFIG_BT_BLUEDROID_ENABLED above; ESPHome never uses NimBLE on ESP-IDF).
+
+logger:
+  level: DEBUG
+  baud_rate: 115200
+
+api:
+  encryption:
+    key: ${api_key}
+  reboot_timeout: 15min
+
+ota:
+  - platform: esphome
+    password: ${ota_password}
+    version: 2
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  domain: .local
+  use_address: ${device_name}.local
+  power_save_mode: NONE
+  fast_connect: true
+  enable_on_boot: true
+  reboot_timeout: 10min
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: !secret wifi_captive
+    ap_timeout: 120s
+
+captive_portal:
+
+mdns:
+
+# Pull irk_capture external component (Bluedroid variant)
+external_components:
+  - source:
+      type: git
+      url: https://github.com/DerekSeaman/irk-capture
+      ref: main
+    components: [irk_capture]
+    refresh: always
+
+# Configure the custom IRK capture component
+irk_capture:
+  id: irk
+  ble_name: ${ble_name}
+  start_on_boot: true
+  continuous_mode: true
+  max_captures: 10
+
+# Text sensors for Wi-Fi info and IRK capture
+text_sensor:
+  - platform: wifi_info
+    bssid:
+      name: "BSSID"
+      entity_category: diagnostic
+    ip_address:
+      name: "IP"
+      entity_category: diagnostic
+
+  - platform: irk_capture
+    irk_capture_id: irk
+    last_irk:
+      name: "IRK"
+      id: last_irk
+    last_address:
+      name: "Device MAC"
+      id: last_addr
+    effective_mac:
+      name: "Effective MAC"
+      id: effective_mac
+
+# BLE advertising on/off (drives start/stop advertising)
+switch:
+  - platform: irk_capture
+    irk_capture_id: irk
+    advertising:
+      id: ble_advertising
+      name: "BLE Advertising"
+      restore_mode: ALWAYS_ON
+
+# Buttons
+button:
+  - platform: irk_capture
+    irk_capture_id: irk
+    new_mac:
+      id: new_mac_btn
+      name: "Generate New MAC"
+  - platform: restart
+    name: "Restart Device"
+
+# Text input to change the BLE name dynamically
+text:
+  - platform: irk_capture
+    irk_capture_id: irk
+    ble_name:
+      id: ble_name_input
+      name: "BLE Device Name"
+      mode: text
+
+# BLE profile selection dropdown
+select:
+  - platform: irk_capture
+    irk_capture_id: irk
+    ble_profile:
+      id: ble_profile_select
+      name: "BLE Profile"
+      # Options: "Heart Sensor" or "Keyboard" (default set in code)
+
+# Diagnostics and basics
+sensor:
+  - platform: uptime
+    name: "Uptime"
+    unit_of_measurement: "h"
+    accuracy_decimals: 2
+    update_interval: 60s
+    filters:
+      - lambda: return x / 3600.0;
+
+  - platform: internal_temperature
+    name: "Internal Temp"
+    entity_category: diagnostic
+
+  - platform: wifi_signal
+    name: "Wi-Fi Signal"
+    update_interval: 30s
+    entity_category: diagnostic
+
+time:
+  - platform: sntp
+    id: sntp_time
+    servers:
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org

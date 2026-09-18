@@ -1,0 +1,570 @@
+# =============================================================================
+# BLE proxy package - shared by every rrn00 / s2224 / cf-sw1 / shelly / S3 / ETH
+# proxy. Changed 2026-09-11 to cut BLE network noise. Four things to know:
+#
+# 1. FORKED bluetooth_proxy COMPONENT (external_components below)
+#    Core ESPHome's bluetooth_proxy forwards EVERY advertisement it hears - it
+#    has no RSSI, MAC or name filtering of any kind. We run a local fork of it
+#    (components/bluetooth_proxy/, synced to tag 2026.9.0) that adds:
+#      rssi_threshold  - drop anything weaker than N dBm
+#      irks            - drop Resolvable Private Addresses that resolve to none
+#                        of our own phones/watches (i.e. other people's devices)
+#      mac_allowlist   - always forward these, bypassing every filter
+#      allow_espressif - exempt Espressif OUIs from the IRK test
+#    Measured effect: ~38% fewer bytes from the RSSI filter alone, and 56-66%
+#    of all advertisements dropped once IRK filtering is on.
+#    >> RE-SYNC THE FORK ON EVERY ESPHOME VERSION BUMP. See its README.md. <<
+#
+# 2. api: batch_delay DOES NOTHING FOR BLE TRAFFIC
+#    The advertisement flush calls send_message() directly and bypasses the
+#    deferred batch queue that batch_delay governs. Flush cadence is hardcoded
+#    (16-advert batch, or the proxy's own ~200ms WiFi / 100ms ETH loop gate).
+#    Don't tune batch_delay expecting it to help here; it only affects sensors.
+#
+# 3. BLE AND WIFI SHARE ONE RADIO on single-core C3/ESP8685 boards
+#    The scan duty cycle (window/interval) is airtime taken away from WiFi. At
+#    75% it starved WiFi badly enough to break ping and OTA while UniFi still
+#    reported a perfect link. If a device won't flash, reboot it to SAFE MODE
+#    (boots without BLE) and flash there. Note the `ota: on_begin: stop_scan`
+#    hook below CANNOT rescue this - it only fires once OTA has already begun,
+#    and the problem is that OTA can't begin.
+#
+# 4. THE SCAN PROFILE LAMBDA IS IN 0.625ms UNITS, NOT MILLISECONDS
+#    scan_parameters: below is in ms (converted at codegen). The C++ setters in
+#    the select's lambda are NOT - they take raw controller units. ms / 0.625 =
+#    units. All three profiles were originally written as if they were ms and
+#    have been corrected; keep the inline `// ms` comments if you edit them.
+# =============================================================================
+
+# Version of THIS package. Board commons append it to their own project version
+# (e.g. version: "2026.09.06.0+ble${ble_proxy_version}") so a change here shows
+# up in sensor.*_project_version on every proxy without editing each board file.
+# BUMP THIS WHENEVER YOU CHANGE ANYTHING IN THIS FILE. The trailing digit is a
+# same-day revision counter - without it a second edit on the same date would
+# produce an identical version and devices would look up to date when they are not.
+substitutions:
+  ble_proxy_version: "2026.09.17.1"
+
+esp32:
+  framework:
+    sdkconfig_options:
+      # BLE 4.2 is supported by ALL ESP32 boards that have bluetooth, the original and derivatives.
+      CONFIG_BT_BLE_42_FEATURES_SUPPORTED: y
+      # Also enable this on any derivative boards (S2, C3 etc) but not the original ESP32.
+      CONFIG_BT_BLE_50_FEATURES_SUPPORTED: y
+
+logger:
+  baud_rate: 0  # 0 Enables logging, but disables serial-port logging to free CPU and memory
+
+external_components:
+  # Fork of core bluetooth_proxy (synced to ESPHome 2026.9.0) adding on-device
+  # advertisement filtering - see the header comment above for why.
+  #
+  # Sourced from git rather than the local components/ dir SO THAT REMOTE BUILD
+  # SERVERS CAN RESOLVE IT: a `type: local` path only exists on this HA box, so
+  # any build offloaded to a paired builder would fail to find the component.
+  # Each builder clones it itself.
+  #
+  # >> RE-SYNC THE FORK ON EVERY ESPHOME VERSION BUMP <<
+  # It pins a copy of a fast-moving core component. Procedure and the exact diff
+  # vs upstream are in the repo's components/bluetooth_proxy/README.md.
+  # THE REPO IS THE SINGLE SOURCE OF TRUTH - component edits need a git push,
+  # and the cached clone under .esphome/external_components/ may need deleting
+  # for a build to pick them up (refresh: does not always suffice).
+  # /config/esphome/components/bluetooth_proxy is only an offline fallback;
+  # re-sync it from the repo if you ever switch back to `type: local`.
+  - source:
+      type: git
+      url: https://github.com/davidcoulson/esphome-bluetooth-proxy-filter
+      # PINNED to a tag. `ref: main` meant every build picked up whatever was on
+      # the default branch at that moment, so two devices flashed an hour apart
+      # could be running different filter code with no way to tell from the
+      # version string. Bump this deliberately when adopting a new release.
+      #
+      # v1.4.0 = re-synced against ESPHome 2026.9.0 (2026-09-16). Upstream
+      # bluetooth_proxy changed by one Python type annotation between 2026.8.2
+      # and 2026.9.0 and the C++ not at all, so v1.4.0 compiles to exactly the
+      # same code as v1.3.2. ble_proxy_version was therefore NOT bumped: no
+      # proxy needs reflashing for this, and a bump would have forced ~70
+      # byte-identical OTAs.
+      ref: v1.5.0
+    components: [bluetooth_proxy]
+    # Kept at 1min despite the pin: the cached clone under
+    # .esphome/external_components/ is keyed per build host, and a stale one
+    # has already served a build the wrong code once. A tag is immutable, so
+    # re-checking it costs nothing and closes that hole.
+    refresh: 1min
+
+api:
+  on_client_connected:
+    # Don't override a deliberate "Disabled" profile when HA reconnects.
+    - if:
+        condition:
+          lambda: 'return id(sel_ble_scan_profile).current_option() != "Disabled";'
+        then:
+          - esp32_ble_tracker.start_scan:
+              continuous: true
+  # Disable BLE tracking when there are no api connections live
+  on_client_disconnected:
+    if:
+      condition:
+        not:
+          api.connected:
+      then:
+        - esp32_ble_tracker.stop_scan:
+
+ota:
+  - platform: esphome
+    id: !extend id_ota
+    on_begin:
+      # Frees the radio for the transfer itself, but note this CANNOT fix a
+      # device that won't accept OTA at all: on_begin only fires once the OTA
+      # connection is established, and a BLE-saturated radio is exactly what
+      # stops it being established. For that case use safe mode (see header).
+      then:
+        - esp32_ble_tracker.stop_scan:
+
+# -----------------------------------------------------------------------
+# BPS receiver auto-calibration beacon.
+#
+# Every probe advertises an iBeacon so its siblings can range it; BPS reads
+# those probe-to-probe measurements through bermuda.dump_devices and fits a
+# per-receiver distance correction. Nothing needs configuring in Bermuda.
+#
+# uuid/major/minor are NOT how BPS identifies a probe - it matches on the
+# Bluetooth MAC, which ESP-IDF derives from the same base as the scanner's
+# own address, so the payload is just a carrier. That is why minor is a
+# constant here rather than derived per device: the upstream README suggests
+# deriving it from the static IP's last octet, but this fleet is DHCP and it
+# would buy nothing.
+#
+# major 1 matches the allow_ibeacon filter below. Change one, change both.
+#
+# 500-1000ms is slow for a beacon and deliberately so: this radio is shared
+# with WiFi and with a 37.5% BLE scan duty cycle, and calibration samples over
+# minutes, so there is nothing to gain from beaconing faster.
+# -----------------------------------------------------------------------
+esp32_ble_beacon:
+  type: iBeacon
+  uuid: fde3b150-2f64-43ba-aee9-867f75ee4a6f
+  major: 1
+  minor: 1
+  min_interval: 500ms
+  max_interval: 1000ms
+
+esp32_ble:
+
+esp32_ble_tracker:
+  id: ble_tracker
+  scan_parameters:
+    # Don't auto start BLE scanning, we control it in the `api` block's automation.
+    continuous: false
+    # PASSIVE. Active scanning transmits a scan request per advertiser to pull a
+    # scan response, which costs TX airtime on the shared radio AND inflates every
+    # forwarded packet (the hub merges scan_rsp into the advert payload). Bermuda
+    # only needs RSSI, so the scan response buys us nothing.
+    # TRADE-OFF: local names and any data carried ONLY in a scan response are lost,
+    # so HA can no longer discover brand-new BLE devices by name. Already-known
+    # devices keep working. Flip back to true temporarily when onboarding a device.
+    active: false
+    interval: 320ms  # default 320ms - how long to spend on each advert channel
+    # 120ms = a 37.5% duty cycle. BLE and WiFi share one 2.4GHz radio on these
+    # single-core C3s, so every percent spent scanning is a percent WiFi does
+    # not get; at the original 240ms (75%) the radio starved WiFi badly enough
+    # to break ping and OTA. Ethernet boards have no such contention and run the
+    # Aggressive profile instead.
+    # Still ample for Bermuda: it polls every 10s with 20-sample smoothing, and
+    # the tracked tags advertise several times a second.
+    window:   120ms  # default 30ms - how long to actually "listen" in each interval. Reduce this if device is unstable.
+    # If the device cannot keep up or becomes unstable, reduce the "window" setting. This may be
+    # required if your device is controlling other sensors or doing PWM for lights etc.
+
+bluetooth_proxy:
+  id: ble_proxy
+  active: true
+  # Compile-time fallback only. The "BLE RSSI Threshold" number below restores
+  # on boot and overwrites this, so tune it there rather than reflashing.
+  rssi_threshold: -80
+  # Absolute reception limit, applied to EVERY advertisement before anything is
+  # categorised - mac_allowlist entries included. The allowlist deliberately
+  # exempts the tracked tags from rssi_threshold, because a weak reading here is
+  # exactly what places a tag nearer another proxy, but that exemption used to be
+  # unbounded: a tag heard down at the receiver noise limit was still forwarded,
+  # and an RSSI that far down carries no usable distance information. It does not
+  # help Bermuda triangulate, it misleads it. This bounds the exemption without
+  # removing it.
+  #
+  # The per-category limits (rssi_mac_allowlist / rssi_irk / rssi_service_uuid)
+  # are deliberately left unset, which means INHERIT: allowlisted tags are bounded
+  # only by this floor, while IRK-matched phones and pairing devices inherit
+  # rssi_threshold. Set one only to give that category its own distance.
+  rssi_floor: -90
+  # Exempts Espressif-OUI addresses from the IRK test below (NOT from the RSSI
+  # threshold - a distant ESP is dropped like anything else). Near-inert in
+  # practice: ESPHome advertises on the public MAC and a public address is never
+  # an RPA, so it only matters if an ESP advertises with a random address.
+  allow_espressif: true
+  # Drop non-resolvable private addresses: they rotate like an RPA but carry no
+  # identity at all, so not even an IRK can resolve them - they can never be
+  # tracked, and every rotation looks like a new device to HA. ~25 of these here,
+  # mostly 0xFEED broadcasters, i.e. Tiles - ours included. Our own Tiles are
+  # rescued by the 0xFEED/0xFEEC entries in service_uuid_allowlist below (a UUID
+  # match marks the advert protected before this test runs); everything else of
+  # ours is unaffected: the tags and the s1-pro use static random addresses, the
+  # phones use RPAs.
+  drop_non_resolvable: true
+
+  # Manufacturer IDs to discard (Bluetooth SIG company identifiers, AD type 0xFF).
+  # 0x004C Apple is ~69% of everything still reaching the network here: AirPods,
+  # AirTags, HomePods and neighbours' devices, none of which we can track.
+  # OUR OWN Apple devices are NOT affected - phones and watches advertise as
+  # RPAs and are matched by the irks: below, which marks them protected and
+  # exempts them from this list. Anything else of ours goes in mac_allowlist.
+  manufacturer_blocklist:
+    - 0x004C  # Apple
+
+  # HomeKit (HAP) accessories advertise under Apple's company id with subtype
+  # 0x06, so the blocklist above would silently kill every HomeKit BLE
+  # accessory - and unlike our phones they have no IRK to rescue them. This
+  # exempts HAP specifically; AirPods/AirTags/Continuity stay blocked.
+  allow_homekit: true
+
+  # Apple FindMy (Offline Finding) accessories - AirTags, AirPods in separated
+  # mode, licensed third-party tags - advertise under Apple's company id with
+  # subtype 0x12 from a random static address, so the 0x004C entry above is
+  # the only thing dropping them and it drops every one. Bermuda holds our
+  # accessories' pairing keys and follows their address rotation, but only if
+  # the adverts reach it. There is no per-accessory scoping (the advert
+  # carries nothing a proxy could match on), so every FindMy tag in range
+  # comes through; -85 bounds that below the fleet threshold rather than the
+  # floor, since a neighbour's AirTag at the fence is not worth forwarding.
+  allow_findmy:
+    rssi: -85
+
+  # iBeacon is Apple manufacturer data with subtype 0x02, so the 0x004C entry
+  # in manufacturer_blocklist above silently drops EVERY iBeacon - and
+  # allow_homekit does not rescue them, that exempts subtype 0x06 only.
+  #
+  # Our own proxies beacon for BPS receiver auto-calibration (they range each
+  # other; comparing those probe-to-probe distances against their placed
+  # positions is what reveals each receiver's error). Those adverts come from
+  # the public Espressif MAC, so they carry no IRK and nothing else protects
+  # them - without this the calibration matrix comes back empty.
+  #
+  # Scoped to major 1 rather than a bare `true`, so OUR probes are exempt and
+  # every other iBeacon in range - AirTags, shop beacons, neighbours - stays
+  # blocked. minor is deliberately not listed: BPS matches probes on their MAC
+  # and never reads the beacon payload, so a fleet-wide major/minor is all the
+  # esp32_ble_beacon block above needs to emit.
+  allow_ibeacon:
+    - major: 1
+      # -127 = forward our own probes at ANY strength, overriding both
+      # rssi_threshold (-75) and rssi_floor (-90). Deliberate: BPS receiver
+      # auto-calibration fits a per-receiver correction from probe-to-probe
+      # distances, and the weak cross-room pairs are the ones that carry the
+      # geometry. At -75 the matrix came back mostly empty.
+      #
+      # This is scoped to major 1, so it applies ONLY to our beacons - every
+      # other iBeacon in range is still dropped by manufacturer_blocklist.
+      #
+      # -95 rather than -127 deliberately. -127 would forward at literally any
+      # strength, but it also disables the component's internal pre-gate: with
+      # something allowed through unconditionally, nothing can be rejected on
+      # RSSI alone, so every advert reaches the categoriser (an AES resolve for
+      # RPAs, a payload walk for the rest). That is real work on a single-core
+      # C3 sharing one radio with WiFi.
+      #
+      # -95 keeps the gate and costs nothing that matters: it is at the ESP32's
+      # own receive sensitivity, below the ~-90 where an RSSI stops carrying
+      # usable distance information anyway, and 20 dB looser than the -75 that
+      # was starving the calibration matrix.
+      rssi: -95
+
+  # Bermuda-tracked Holy-IoT tags. These bypass EVERY filter including the RSSI
+  # threshold: a tag reading weak at this proxy is exactly the measurement
+  # Bermuda needs to place it nearer another one, so it must not be dropped.
+  # Matched on address, not name - these beacons advertise no local name.
+  # Defined in secrets.yaml (ble_pet_tag_macs) so the pet names stay
+  # out of git, and so both BLE packages share one list.
+  mac_allowlist: !secret ble_pet_tag_macs
+
+  # Service UUIDs that bypass EVERY filter, including the address-type tests and
+  # the RSSI threshold. The two entries are here for DIFFERENT reasons:
+  #
+  # 0xFFF6 (Matter commissioning) - a device in commissioning mode advertises
+  #   from a rotating private address, so drop_non_resolvable and the unresolved
+  #   -RPA test would discard it. Its MAC is not knowable in advance, so
+  #   mac_allowlist cannot help; the service UUID is the only handle there is.
+  #
+  # Improv Wi-Fi - an unprovisioned ESP advertises from its PUBLIC Espressif
+  #   address, so the address-type tests never touch it. Its only exposure is
+  #   the -85 dBm RSSI threshold, which drops a far-away board. Note
+  #   allow_espressif does NOT rescue it: that flag is consulted only in the
+  #   unresolved-RPA test, never in the RSSI check.
+  #
+  # Don't add high-volume public services here (0xFD6F exposure notification,
+  # 0xFE2C Fast Pair). Those devices are not being paired to HA, and letting
+  # them bypass the filters would undo the whole point of this file.
+  service_uuid_allowlist:
+    - 0xFFF6                                   # Matter commissioning
+    - "00467768-6228-2272-4663-277478268000"   # Improv Wi-Fi
+    - 0xFE59                                   # Nordic DFU (Holy-IoT tags in
+                                               # bootloader mode advertise this,
+                                               # usually from a DIFFERENT MAC -
+                                               # commonly base+1 - so their
+                                               # mac_allowlist entry does NOT
+                                               # cover them. Without this an
+                                               # nRF52 tag cannot be OTA'd.
+    - 0xFEED                                   # Tile (current firmware)
+    - 0xFEEC                                   # Tile activation service (a Tile
+                                               # not yet claimed by an account)
+                                               # Tiles advertise from rotating
+                                               # NON-resolvable addresses, so
+                                               # drop_non_resolvable would take
+                                               # them and no IRK/MAC can help;
+                                               # the service UUID is the only
+                                               # handle. Bermuda binds each Tile
+                                               # across rotations by matching
+                                               # the per-proxy RSSI pattern of
+                                               # the old and new address, which
+                                               # needs >=2 proxies to hear both.
+  # RSSI limit for the service_uuid_allowlist category. Left unset it inherits
+  # rssi_threshold (-80 at runtime), which drops a Tile one room away. Bound it
+  # by the floor instead, same reasoning as mac_allowlist: a weak Tile reading
+  # here is exactly what places it nearer another proxy. Matter/Improv/DFU share
+  # the limit; they are rare, low-volume adverts so that costs nothing.
+  rssi_service_uuid: -90
+
+  # Identity Resolving Keys for our own phones/watches. An RPA that resolves to
+  # none of these belongs to somebody else, rotates, and can never be tracked -
+  # so it is dropped. Devices with fixed addresses are unaffected (no IRK, so
+  # the RPA test never fires for them). Mirrored from HA's private_ble_device.
+  irks:
+    - !secret ble_irk_phone_1
+    - !secret ble_irk_watch_1
+    - !secret ble_irk_phone_2
+    - !secret ble_irk_watch_2
+    - !secret ble_irk_phone_3
+    - !secret ble_irk_watch_3
+    - !secret ble_irk_phone_4
+    - !secret ble_irk_watch_4
+
+switch:
+  # ONBOARDING SWITCH. Scanning is passive (scan_parameters active: false), which
+  # drops scan responses - and a great many BLE devices put their local name ONLY
+  # in the scan response. HA discovers new BLE devices by name, so with passive
+  # scanning a brand-new device may never be discoverable at all.
+  #
+  # Rather than reflashing every time a device is onboarded, flip this on, add the
+  # device in HA, then flip it off. Deliberately NOT restore_value: a reboot must
+  # return to passive, so an accidental leave-on cannot quietly cost airtime for
+  # weeks.
+  - platform: template
+    name: "BLE Active Scan (onboarding)"
+    id: sw_ble_active_scan
+    icon: mdi:bluetooth-audio
+    entity_category: config
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: 'id(ble_tracker).set_scan_active(true);'
+      - esp32_ble_tracker.stop_scan:
+      - delay: 200ms
+      - esp32_ble_tracker.start_scan:
+          continuous: true
+    turn_off_action:
+      - lambda: 'id(ble_tracker).set_scan_active(false);'
+      - esp32_ble_tracker.stop_scan:
+      - delay: 200ms
+      - esp32_ble_tracker.start_scan:
+          continuous: true
+
+number:
+  - platform: template
+    name: "BLE RSSI Threshold"
+    id: num_ble_rssi_threshold
+    icon: mdi:signal-distance-variant
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: -75
+    # Clamped to a sane band, and the bottom is now pinned to rssi_floor rather
+    # than chosen independently: this control only moves the DEFAULT category's
+    # limit, and the floor above already discards everything below -90, so a
+    # setting under -90 would be dead travel on the dial - it would appear to
+    # loosen the filter and change nothing.
+    #
+    # -90 is roughly 11m under Bermuda's ref_power -55 / attenuation 3, inside
+    # the 12m max_area_radius, so the usable tracking range is still covered.
+    #
+    # NOTE: -127 ("forward everything", the old filter-off setting) is
+    # deliberately not reachable. To disable filtering for a comparison, raise
+    # rssi_floor and lower min_value together and reflash, or use the "Disabled"
+    # scan profile to stop the radio entirely.
+    #
+    # >> RAISING rssi_floor? Raise this min_value to match, or the dial silently
+    # >> stops working below the new floor. <<
+    min_value: -90
+    max_value: -40
+    step: 1
+    unit_of_measurement: dBm
+    mode: box
+    # on_value, NOT set_action: TemplateNumber::setup() restores by calling
+    # publish_state() and never control(), so set_action would not fire on boot
+    # and the restored value would display while the proxy kept the YAML default.
+    on_value:
+      - lambda: 'id(ble_proxy).set_rssi_threshold((int8_t) x);'
+
+sensor:
+  # Advertisement accounting from the forked bluetooth_proxy, so the effect of
+  # the threshold is measurable per-proxy instead of guessed. The C++ counters
+  # are free-running totals; these report the delta since the last update so
+  # they graph as a rate. Unsigned subtraction stays correct across the uint32
+  # rollover, so no reset is needed.
+  - platform: template
+    name: "BLE Adverts Forwarded"
+    id: sens_ble_adv_fwd
+    unit_of_measurement: "adv/min"
+    state_class: measurement
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:bluetooth-transfer
+    update_interval: 60s
+    lambda: |-
+      static uint32_t last = 0;
+      uint32_t now = id(ble_proxy).get_adv_forwarded();
+      uint32_t delta = now - last;
+      last = now;
+      return (float) delta;
+
+  - platform: template
+    name: "BLE Adverts Dropped"
+    id: sens_ble_adv_dropped
+    unit_of_measurement: "adv/min"
+    state_class: measurement
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:bluetooth-off
+    update_interval: 60s
+    lambda: |-
+      static uint32_t last = 0;
+      uint32_t now = id(ble_proxy).get_adv_dropped();
+      uint32_t delta = now - last;
+      last = now;
+      return (float) delta;
+
+  # Subset of "Dropped": RPAs that resolved to none of our IRKs, i.e. other
+  # people's phones and watches. Separated out because it answers a different
+  # question than the RSSI drops - how much of the noise is untrackable.
+  # Adverts forwarded ONLY because they matched service_uuid_allowlist, i.e.
+  # they would have been dropped otherwise. Sits at zero while nothing is
+  # pairing, so any movement is direct evidence the passthrough fired - which is
+  # what makes a failed commissioning attempt diagnosable instead of guesswork.
+  - platform: template
+    name: "BLE Service UUID Allowed"
+    id: sens_ble_svc_uuid_allowed
+    unit_of_measurement: "adv/min"
+    state_class: measurement
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:key-wireless
+    update_interval: 60s
+    lambda: |-
+      static uint32_t last = 0;
+      uint32_t now = id(ble_proxy).get_adv_allowed_service_uuid();
+      uint32_t delta = now - last;
+      last = now;
+      return (float) delta;
+
+  - platform: template
+    name: "BLE RPAs Dropped"
+    id: sens_ble_rpa_dropped
+    unit_of_measurement: "adv/min"
+    state_class: measurement
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:cellphone-remove
+    update_interval: 60s
+    lambda: |-
+      static uint32_t last = 0;
+      uint32_t now = id(ble_proxy).get_adv_dropped_rpa();
+      uint32_t delta = now - last;
+      last = now;
+      return (float) delta;
+
+  # The tuning number: what fraction of what this proxy hears is being
+  # suppressed. Reports NAN (unknown) rather than 0 when nothing was heard at
+  # all, so an idle proxy does not look like a 0% drop rate.
+  - platform: template
+    name: "BLE Advert Drop Rate"
+    id: sens_ble_drop_rate
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    icon: mdi:filter-variant
+    update_interval: 60s
+    lambda: |-
+      static uint32_t last_f = 0, last_d = 0;
+      uint32_t f = id(ble_proxy).get_adv_forwarded();
+      uint32_t d = id(ble_proxy).get_adv_dropped();
+      uint32_t df = f - last_f, dd = d - last_d;
+      last_f = f;
+      last_d = d;
+      uint32_t total = df + dd;
+      if (total == 0)
+        return NAN;
+      return (100.0f * dd) / total;
+
+select:
+  - platform: template
+    name: "BLE Scan Profile"
+    id: sel_ble_scan_profile
+    icon: mdi:speedometer
+    optimistic: true
+    restore_value: true
+    initial_option: "Balanced"
+    options:
+      - "Insane"
+      - "Aggressive"
+      - "Balanced"
+      - "Disabled"
+    set_action:
+      - lambda: |-
+          // NOTE ON UNITS: these setters take raw BLE controller units of
+          // 0.625ms, NOT milliseconds. The YAML scan_parameters above are in ms
+          // and get converted by to_ble_units() during codegen; a literal here
+          // does not. So 320 would be 200ms, not 320ms. ms / 0.625 = units.
+          auto opt = id(sel_ble_scan_profile).current_option();
+          if (opt == "Insane") {
+            id(ble_tracker).set_scan_interval(1760);  // 1100ms
+            id(ble_tracker).set_scan_window(1760);    // 1100ms -> 100%
+            id(ble_tracker).set_scan_active(false);  // passive - see scan_parameters
+          } else if (opt == "Aggressive") {
+            id(ble_tracker).set_scan_interval(512);   // 320ms
+            id(ble_tracker).set_scan_window(480);     // 300ms -> 94%
+            id(ble_tracker).set_scan_active(false);  // passive - see scan_parameters
+          } else if (opt == "Balanced") {
+            // 37.5% duty, leaving most of the radio for WiFi on single-core
+            // boards. This is the profile every WiFi proxy should run.
+            id(ble_tracker).set_scan_interval(512);   // 320ms
+            id(ble_tracker).set_scan_window(192);     // 120ms -> 37.5%
+            id(ble_tracker).set_scan_active(false);  // passive - see scan_parameters
+          }
+      # "Disabled" previously only set passive + a 30ms window, which still
+      # scanned and still forwarded. Actually stop the radio instead.
+      - if:
+          condition:
+            lambda: 'return id(sel_ble_scan_profile).current_option() == "Disabled";'
+          then:
+            - esp32_ble_tracker.stop_scan:
+          else:
+            # The setters above only take effect when a scan next starts, and
+            # start_scan_() early-returns unless the scanner is IDLE - so this
+            # only fires when coming back from "Disabled".
+            - if:
+                condition:
+                  lambda: 'return !id(ble_tracker).scan_running();'
+                then:
+                  - esp32_ble_tracker.start_scan:
+                      continuous: true
