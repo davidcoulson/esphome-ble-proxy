@@ -43,7 +43,7 @@
 # same-day revision counter - without it a second edit on the same date would
 # produce an identical version and devices would look up to date when they are not.
 substitutions:
-  ble_proxy_version: "2026.09.19.1"
+  ble_proxy_version: "2026.09.19.2"
   # The proximity UUID our probes beacon with AND the one the allow_ibeacon rule
   # below is scoped to. Defined once so the two cannot drift apart: a mismatch
   # would silently empty the BPS calibration matrix.

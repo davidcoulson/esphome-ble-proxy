@@ -19,12 +19,16 @@
 # ---------------------------------------------------------------------------
 
 external_components:
-  # PINNED via @v1.0.0. Without a ref this tracks the default branch, so any
-  # push to main would change the whole fleet's firmware on the next build
-  # with no review step - unacceptable for a component that has already
-  # caused one fleet-wide reboot loop. v1.0.0 is exactly the code deployed
-  # on 2026-09-13, so pinning it changes no binary. Bump deliberately.
-  - source: github://davidcoulson/esphome-gateway-watchdog@v1.0.0
+  # PINNED. Without a ref this tracks the default branch, so any push to main
+  # would change the whole fleet's firmware on the next build with no review
+  # step - unacceptable for a component that has already caused one
+  # fleet-wide reboot loop. Bump deliberately.
+  #   v1.0.0 = the code deployed on 2026-09-13.
+  #   v1.1.0 (2026-09-19) = no false "loop starved ~59700 ms" warning after the
+  #     arm delay on every boot; the rebuild-before-reboot is per outage (it
+  #     used to be spent once, so a later unrelated outage rebooted after a
+  #     single window). Host-tested; see the repo's tests/.
+  - source: github://davidcoulson/esphome-gateway-watchdog@v1.1.0
     components: [gateway_watchdog]
     # refresh: always - ESPHome caches an external_components clone for a
     # day by default, and each build environment keeps its OWN cache. A

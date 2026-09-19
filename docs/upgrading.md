@@ -64,7 +64,7 @@ different filter code with no way to tell from the version string.
 |---|---|---|
 | ESP-IDF **6.1.0** | `djc-common.yaml` | The Bootloader Version sensor uses the IDF 6 signature of `esp_ota_get_bootloader_description(nullptr, &desc)` and will not build on 5.x. The "not the recommended version" warning is expected. |
 | `min_version: 2026.9.0` | `djc-common.yaml` | Raise it when you adopt keys that need a newer ESPHome — it is what makes an old builder fail fast. |
-| `gateway_watchdog@v1.0.0` | `gateway-watchdog.yaml` | Pinned deliberately; this component has already caused one fleet-wide reboot loop. |
+| `gateway_watchdog@v1.1.0` | `gateway-watchdog.yaml` | Pinned deliberately; this component has already caused one fleet-wide reboot loop. |
 | LibreTiny (non-proxy families) | `base-bk7231.yaml` | Not used by any proxy. |
 
 ### 5. Validate, then compile, then canary
