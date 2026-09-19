@@ -63,19 +63,19 @@ changed afterwards:
 
 | | |
 |---|---|
-| **Track phones over Bluetooth?** | *No* blocks Apple manufacturer data — ~69% of what a proxy hears — while keeping HomeKit accessories and FindMy tags. *Yes* leaves it through. |
+| **Block Apple noise?** | *Yes* drops Apple manufacturer data — ~69% of what a proxy hears — while keeping HomeKit accessories and FindMy tags. *No* forwards it. |
 | **Relay connections?** | *Yes* lets Home Assistant reach locks, LED strips, SwitchBots through the proxy. *No* is advertisements only: lighter, and the radio is never pulled off scanning. |
 
 That is 4 variants × 7 boards, all built ahead of time. Everything else — RSSI
 threshold, RSSI floor, scan profile — is a Home Assistant entity you can change
 live without reflashing.
 
-**You cannot have Apple filtering *and* phone tracking from a prebuilt binary.**
-On the fleet they coexist because it lists its own phones' IRKs: an
-advertisement whose rotating address matches one is marked protected and skips
-the payload filters. An IRK is per-person and compile-time, so no prebuilt image
-can carry yours. The flashed device is *adoptable* — adopt it in your own
-ESPHome dashboard, add `irks:`, flash over the air.
+**IRKs come from Home Assistant, not the build.** Blocking Apple would otherwise
+drop your own iPhones too: an advertisement is protected from the blocklist
+only when its rotating address matches an IRK. Every proxy subscribes to one HA
+entity holding the list, with a name next to each key. Adding or replacing a
+phone is an edit in HA; every proxy reloads within a second, with no reflash.
+[docs/irks-from-ha.md](docs/irks-from-ha.md).
 
 **Bring your own ESPHome.** Write a device file, use the shared packages, keep
 full control. That is the rest of this repo.
@@ -99,6 +99,7 @@ docs/
   troubleshooting.md  symptom → cause → fix
   home-assistant.md   Bermuda, BPS, private_ble_device, the entities you get
   upgrading.md     the ESPHome bump runbook (re-sync the fork!)
+  irks-from-ha.md  change IRKs in Home Assistant instead of reflashing
 wizard/            the browser flasher + config generator, served by GitHub Pages
 ```
 

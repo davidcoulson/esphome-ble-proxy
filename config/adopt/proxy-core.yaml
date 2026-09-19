@@ -18,6 +18,11 @@ substitutions:
   name: ble-proxy
   friendly_name: BLE Proxy
 
+packages:
+  # Lets IRKs be supplied from Home Assistant after flashing - which is what
+  # makes Apple filtering safe on a prebuilt binary. See irks-from-ha.yaml.
+  irks_from_ha: !include ../common/irks-from-ha.yaml
+
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
@@ -104,7 +109,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/davidcoulson/esphome-bluetooth-proxy-filter
-      ref: v1.5.0
+      ref: v1.6.0
     components: [bluetooth_proxy]
     refresh: 1min
 
@@ -151,8 +156,8 @@ bluetooth_proxy:
   # else's — they advertise Apple manufacturer data, nothing would protect them,
   # and Home Assistant would stop seeing them at all.
   #
-  # So: flash this, then ADOPT the device in your own ESPHome dashboard, add
-  # your irks: and mac_allowlist:, and re-flash over the air. Details:
+  # So: flash this, then supply your IRKs from Home Assistant (see
+  # irks-from-ha.yaml - no reflash), or adopt the device and add irks:. Details:
   # https://github.com/davidcoulson/esphome-ble-proxy/blob/main/docs/filtering.md
   # ---------------------------------------------------------------------------
 

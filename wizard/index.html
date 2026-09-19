@@ -158,10 +158,10 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
       </p>
 
       <div class="qopt">
-        <div class="qlabel">Do you track phones or watches over Bluetooth?</div>
-        <div class="seg" role="group" aria-label="Track phones">
-          <button type="button" data-opt="phones" data-val="yes" aria-pressed="true">Yes — track phones</button>
-          <button type="button" data-opt="phones" data-val="no" aria-pressed="false">No — sensors and tags only</button>
+        <div class="qlabel">Block Apple noise?</div>
+        <div class="seg" role="group" aria-label="Apple filtering">
+          <button type="button" data-opt="apple" data-val="keep" aria-pressed="true">No — forward it</button>
+          <button type="button" data-opt="apple" data-val="block" aria-pressed="false">Yes — block it</button>
         </div>
         <p class="qnote" id="phoneshint"></p>
       </div>
@@ -216,21 +216,22 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
     </div>
 
     <div class="panel accent">
-      <h2 class="qh">Why you can't have both</h2>
+      <h2 class="qh">Blocking Apple and still seeing your phones</h2>
       <p class="qnote">
-        Blocking Apple removes ~69% of everything a proxy hears. Tracking phones needs those same
-        advertisements. On the fleet these coexist because it lists its own phones' <b>IRKs</b> — an
-        advertisement whose rotating address matches one is marked <i>protected</i> and skips the
-        payload filters, so Apple gets blocked and your own phones still come through.
+        Your phones advertise the same Apple data as everyone else's. What sets them apart is their
+        <b>IRK</b>, a key that resolves their rotating address. A proxy that knows your IRKs lets your
+        phones through the Apple block and drops everyone else's.
       </p>
       <p class="qnote">
-        An IRK is per-person and compile-time, so a prebuilt binary cannot contain yours. That is the
-        whole reason this is a choice rather than a default.
+        This firmware gets its IRKs <b>from Home Assistant</b>, not from the build. Put them in one
+        template sensor, with a name next to each, and every proxy loads them. Replacing a phone is
+        one edited line, with no reflash.
+        <a href="https://github.com/davidcoulson/esphome-ble-proxy/blob/main/docs/irks-from-ha.md">Set it up →</a>
       </p>
       <p class="qnote">
-        <b>Want both?</b> The device you flash is <b>adoptable</b>. Open your own ESPHome dashboard,
-        adopt it, add your <code>irks:</code>, and flash over the air — no USB, no starting over.
-        <a href="https://github.com/davidcoulson/esphome-ble-proxy/blob/main/docs/filtering.md#getting-your-irks">How to get your IRKs →</a>
+        One caution: prebuilt firmware talks to Home Assistant <b>unencrypted</b>, and an IRK
+        identifies a person's phone. On a network you trust that's fine. Otherwise, first adopt the
+        device into an ESPHome dashboard and give it an encryption key.
       </p>
     </div>
 
@@ -1295,10 +1296,10 @@ $("dl").addEventListener("click", function(){
 var QUICK_ORDER = ["eth-waveshare","eth-xiao","c5","s3","esp32","c6","c3"];
 var quickBoard = "s3";
 // Both compile-time, so they pick a prebuilt variant rather than a setting.
-var quickOpt = { phones: "yes", connect: "yes" };
+var quickOpt = { apple: "keep", connect: "yes" };
 
 function quickVariant(){
-  return (quickOpt.phones === "no" ? "nophones" : "standard") +
+  return (quickOpt.apple === "block" ? "noapple" : "standard") +
          (quickOpt.connect === "no" ? "-adv" : "");
 }
 
@@ -1333,13 +1334,13 @@ function renderQuick(){
   $("installer").setAttribute("manifest", "firmware/" + b.fw + "/" + v + "/manifest.json");
   $("ethnote").hidden = !b.eth;
 
-  $("phoneshint").innerHTML = quickOpt.phones === "no"
-    ? "Apple manufacturer data is blocked — about <b>69% of everything this proxy hears</b>, gone "
-      + "before it reaches the network. HomeKit accessories and FindMy tags are kept. "
-      + "<b>Home Assistant will not see your iPhones or Apple Watches through this proxy.</b>"
-    : "Nothing is blocked by manufacturer, so your phones and watches come through. It also means "
-      + "everyone else's AirPods do — the single biggest source of noise. Adopt the device later "
-      + "and add your IRKs to get both.";
+  $("phoneshint").innerHTML = quickOpt.apple === "block"
+    ? "Drops about <b>69% of everything this proxy hears</b> before it reaches the network. HomeKit "
+      + "accessories and FindMy tags are kept. <b>Your own iPhones and Watches are dropped too until "
+      + "you give the proxy their IRKs</b> — see below. Sensors-and-tags-only proxies can skip that."
+    : "Everything Apple comes through, your phones included — and so do everyone else's AirPods, the "
+      + "single biggest source of noise. Fine to start with; you can reflash to the blocking build "
+      + "later.";
 
   $("connecthint").innerHTML = quickOpt.connect === "no"
     ? "Advertisements only. Lighter on RAM and the radio is never pulled away from scanning — but "
@@ -1349,10 +1350,11 @@ function renderQuick(){
       + "unless you have a reason not to.";
 
   var items = [];
-  if (quickOpt.phones === "no")
-    items.push(["Apple blocked", "~69% of traffic dropped on the device. HomeKit and FindMy tags kept."]);
+  if (quickOpt.apple === "block")
+    items.push(["Apple blocked", "~69% of traffic dropped on the device. HomeKit and FindMy tags kept, and your own phones once their IRKs are in HA."]);
   else
-    items.push(["Phones tracked", "Nothing blocked by manufacturer, so <code>private_ble_device</code> and Bermuda can see them."]);
+    items.push(["Nothing blocked by manufacturer", "Phones, watches and everyone's AirPods all come through."]);
+  items.push(["IRKs from Home Assistant", "Add or replace a phone's key in HA and every proxy picks it up — no reflash."]);
   items.push(["RSSI filtering", "A floor at −90 dBm and a threshold at −75, <b>tunable live</b> from Home Assistant — no reflash."]);
   items.push(["Non-resolvable addresses dropped", "They rotate <i>and</i> carry no identity, so every rotation looks like a new device. Tiles are exempted."]);
   items.push(["Pairing still works", "Matter, Improv and Nordic DFU bypass every filter — a device in pairing mode has no address you could allowlist in advance."]);

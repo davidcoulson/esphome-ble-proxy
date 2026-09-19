@@ -17,7 +17,7 @@ keys in ESPHome, so the variant's `bluetooth_proxy:` block overrides whatever
 `config/adopt/<board>.yaml` set:
 
 ```bash
-./compose.sh esp32s3 nophones > _build.yaml
+./compose.sh esp32s3 noapple > _build.yaml
 esphome config _build.yaml
 ```
 
@@ -31,23 +31,19 @@ profile) is a Home Assistant entity instead.
 |---|---|---|
 | `standard` | no | yes |
 | `standard-adv` | no | no |
-| `nophones` | **yes** | yes |
-| `nophones-adv` | **yes** | no |
+| `noapple` | **yes** | yes |
+| `noapple-adv` | **yes** | no |
 
-**Why "nophones" is a separate build and not a default.** Blocking `0x004C`
-removes ~69% of what a proxy hears. On the fleet that is safe because the fleet
-lists its own phones' IRKs — an advertisement whose resolvable private address
-matches one is categorised as `CAT_IRK`, marked *protected*, and skips the
-payload filters where the manufacturer blocklist lives. With an empty `irks:`
-list nothing is protected, so the blocklist takes your own iPhones too.
+**The Apple blocklist is only safe with IRKs.** Blocking `0x004C` removes ~69%
+of what a proxy hears, but your own iPhones advertise Apple data too. They get
+through only when their resolvable private address matches an IRK: that match
+categorises the advertisement as `CAT_IRK` and marks it *protected*, and
+protected advertisements skip the payload filters where the blocklist lives.
 
-A prebuilt binary cannot contain a per-person IRK, so the honest options are
-"block Apple and lose phones" or "keep phones and keep the noise". Both are
-legitimate: a proxy that exists to reach BTHome/Xiaomi/SwitchBot sensors and
-Tiles has no reason to hear a single Apple packet.
-
-To get both, adopt the device (`dashboard_import` makes it adoptable) and add
-`irks:` in your own dashboard.
+A prebuilt binary starts with no IRKs, so `noapple` drops your phones until you
+supply them. That happens from Home Assistant, at runtime, with no reflash (see
+[docs/irks-from-ha.md](../docs/irks-from-ha.md)). A proxy that exists only for
+sensors and tags can skip that entirely.
 
 ## Device names
 
