@@ -25,7 +25,12 @@ esp32:
   framework:
     type: esp-idf
     advanced:
-      compiler_optimization: PERF
+      # SIZE, not the PERF the other boards use. With PERF this image had 2%
+      # free in the 4MB layout's 0x1C0000 app partition, and fork v1.7.0's extra
+      # filter code pushed the C5 over it (2026-09-19). SIZE buys ~180 KB back.
+      # The quick-flash image carries web_server, captive_portal and improv_serial,
+      # which a fleet build from common/ does not - that one keeps PERF.
+      compiler_optimization: SIZE
     sdkconfig_options:
       CONFIG_BT_BLE_42_FEATURES_SUPPORTED: y
       CONFIG_BT_BLE_50_FEATURES_SUPPORTED: y
