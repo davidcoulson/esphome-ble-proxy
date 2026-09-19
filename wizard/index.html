@@ -1152,7 +1152,7 @@ function genNext(c){
   h.push("<li>Adopt it: Settings → Devices &amp; Services → <b>ESPHome</b> → Configure, and paste the "+
     "encryption key. Home Assistant registers it as a Bluetooth adapter automatically.</li>");
   h.push("<li>Check it works. Wait a minute, then look at <b>BLE Adverts Forwarded</b> (above zero) "+
-    "and <b>BLE Advert Drop Rate</b> (50–70% is healthy).</li>");
+    "and <b>BLE Advert Drop Rate</b> (roughly 55–65% with IRKs alone, ~80% with Apple blocked too).</li>");
   h.push("</ol>");
 
   var notes = [];

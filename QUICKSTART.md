@@ -125,7 +125,9 @@ On the new device in Home Assistant you get these:
 | **BLE Scan Profile** | Insane / Aggressive / Balanced / Disabled |
 
 Give it a minute (they publish every 60s). **Forwarded** above zero means it is
-working. A **Drop Rate** somewhere in the 50–70% range is normal and healthy.
+working. How high the **Drop Rate** runs depends mostly on whether Apple is blocked:
+roughly 55–65% with IRK filtering alone, and around 80% (60–98% across proxies) with
+the Apple blocklist on as well. Compare a proxy against its siblings rather than a target.
 
 That's it. You have a working proxy.
 

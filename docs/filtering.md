@@ -8,7 +8,7 @@ triggers.
 
 So this fleet runs a fork:
 [`davidcoulson/esphome-bluetooth-proxy-filter`](https://github.com/davidcoulson/esphome-bluetooth-proxy-filter),
-pinned by tag in `common/ble-proxy.yaml` (**v1.5.0**, synced to ESPHome
+pinned by tag in `common/ble-proxy.yaml` (**v1.6.0**, synced to ESPHome
 2026.9.0). It adds filtering inside `on_raw_advertisement_()` — the only point
 at which a packet can be suppressed before it is queued for the API and crosses
 the network.
@@ -74,7 +74,7 @@ upgrade which sets nothing reproduces the old single-threshold behaviour exactly
 
 | Option | Default | Here | |
 |---|---|---|---|
-| `irks` | `[]` | 8 keys | Identity Resolving Keys for your own phones/watches. An RPA resolving to none of them belongs to someone else. **This is the biggest single win.** |
+| `irks` | `[]` | 8 keys, **from Home Assistant** | Identity Resolving Keys for your own phones/watches. An RPA resolving to none of them belongs to someone else. **This is the biggest single win.** The YAML list is now only a first-boot seed; the live list comes from HA at runtime — see [irks-from-ha.md](irks-from-ha.md). |
 | `allow_espressif` | `true` | `true` | Exempts Espressif-OUI addresses from the IRK test (not from RSSI). Near-inert in practice — ESPHome advertises on the public MAC and a public address is never an RPA. |
 | `drop_non_resolvable` | `false` | **`true`** | ~25 of these here, mostly Tiles. Every rotation looks like a new device to Home Assistant. Your own Tiles are rescued by the `0xFEED`/`0xFEEC` service-UUID entries. |
 | `mac_allowlist` | `[]` | `!secret ble_pet_tag_macs` | Bypasses every filter except the floor. |
@@ -152,14 +152,20 @@ NimBLE-only.
 
 **3. Android.** Root, then read `/data/misc/bluedroid/bt_config.conf`.
 
-Then in `secrets.yaml`:
+Then add it to the list in **Home Assistant's** `secrets.yaml`, with a name, and
+reload template entities. Every proxy picks it up; no reflash:
 
 ```yaml
-ble_irk_phone_1: "00112233445566778899aabbccddeeff"
+ble_proxy_irks: |
+  David phone:  00112233445566778899aabbccddeeff
 ```
 
-Missing one is harmless — an empty `irks:` list simply disables IRK filtering.
-A *wrong* one is also harmless; it just never matches.
+Full setup, and what happens when the entity is unavailable, in
+[irks-from-ha.md](irks-from-ha.md). The `ble_irk_*` keys in ESPHome's
+`secrets.yaml` still exist, but only seed a proxy's first boot.
+
+Missing one is harmless — that phone is simply treated like anyone else's. A
+*wrong* one is also harmless; it just never matches.
 
 ---
 
@@ -180,6 +186,9 @@ needs resetting):
 Drop Rate returns `NAN` (unknown), not `0`, when the proxy heard nothing at all,
 so an idle proxy is not misreported as a 0% drop rate.
 
-A healthy proxy in a normal house sits around **50–70%**. Much lower usually
+What's normal depends on which filters are on. IRK filtering alone dropped **56–66%**
+here. With the Apple blocklist as well, the ~60-proxy fleet runs at a **median of about
+80%**, and anywhere from 60% to 98% per proxy depending on what's nearby. Much lower than
+its siblings usually
 means the IRKs are missing. Much higher, with devices going missing, means the
 threshold is too tight — see [tuning.md](tuning.md).

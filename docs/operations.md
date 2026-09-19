@@ -111,7 +111,7 @@ plain text. `secrets.yaml*` is the entry that covers them.
 | Signal | Healthy | Investigate when |
 |---|---|---|
 | **BLE Adverts Forwarded** | > 0, roughly comparable across proxies | zero, or a lone outlier — usually placement |
-| **BLE Advert Drop Rate** | 50–70% | < 40% (IRKs missing?) or > 90% with devices vanishing |
+| **BLE Advert Drop Rate** | ~80% median with the Apple blocklist, ~55–65% without | far below its siblings (IRKs missing?), or a sudden jump with devices vanishing |
 | **Gateway Watchdog Reboots Used** | 0 | anything above 0, especially right after an OTA |
 | **Uptime** | days | repeated resets — check Reset Reason |
 | **Project Version** | same across a family | a straggler means a failed OTA |
