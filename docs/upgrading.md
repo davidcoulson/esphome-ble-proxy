@@ -27,7 +27,7 @@ The additions, by file:
 |---|---|
 | `__init__.py` | the filter config keys (`rssi_threshold`, `rssi_floor`, `rssi_mac_allowlist`, `rssi_irk`, `rssi_service_uuid`, `irks`, `mac_allowlist`, `mac_blocklist`, `allowlist_exclusive`, `manufacturer_blocklist`, `name_blocklist`, `drop_non_resolvable`, `allow_espressif`, `allow_homekit`, `allow_ibeacon`, `allow_findmy`, `service_uuid_allowlist`) in the schema and their `cg.add()` calls in **both** `to_code` arms |
 | `bluetooth_proxy.h` | the members, setters and the counter getters |
-| `bluetooth_proxy.cpp` | the filter chain in `on_raw_advertisement_()` plus its helpers (`address_is_rpa_`, `irk_matches_`, `ibeacon_match_`, `payload_has_allowed_service_uuid_`, `payload_blocked_`) |
+| `bluetooth_proxy.cpp` | the filter chain in `on_raw_advertisement_()` plus its helpers (`address_is_rpa_`, `address_is_non_resolvable_`, `irk_matches_`, `set_irks`, `recompute_gate_`, `add_ibeacon_rule`, `ibeacon_match_`, `findmy_match_`, `uuid128_matches_`, `payload_has_allowed_service_uuid_`, `payload_blocked_`, `is_espressif_oui_`). After re-applying, run `tests/run.sh` in the fork — it checks all of these against the tested hook component. |
 
 ### 2. Decide whether the compiled code actually changed
 
@@ -50,7 +50,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/davidcoulson/esphome-bluetooth-proxy-filter
-      ref: v1.6.0       # <- here
+      ref: v1.7.0       # <- here
     components: [bluetooth_proxy]
     refresh: 1min
 ```
@@ -93,9 +93,32 @@ rm -rf /config/esphome/.esphome/external_components/<hash>
 
 ## Watch list for future ESPHome releases
 
-**If upstream gains native RSSI/MAC filtering, delete the fork.** That is the
-goal state: drop `components/bluetooth_proxy/`, remove the `external_components`
-block from `ble-proxy.yaml`, and map the options onto whatever upstream ships.
+**ESPHome 2026.10 is where the fork goes away.** Upstream merged an
+`AdvertisementFilter` hook into stock `bluetooth_proxy`
+([esphome/esphome#19220](https://github.com/esphome/esphome/pull/19220)), and
+[`esphome-ble-advert-filter`](https://github.com/davidcoulson/esphome-ble-advert-filter)
+is the same filter built on it — an ordinary external component that replaces
+nothing, so there is nothing left to re-sync.
+
+The two are kept interchangeable on purpose:
+
+- Same tags (`v1.7.0` of one is `v1.7.0` of the other), same YAML keys, same
+  lambda API (`set_irks()`, `get_adv_forwarded()`, …).
+- The fork's CI runs `tools/check_parity.py`, which fails if any filter function,
+  the chain itself or the public API differs textually from the hook component.
+- The hook component's host tests compile the real source under ASan/UBSan. The
+  fork cannot be compiled off-device, so parity is what carries those tests over.
+
+The switch itself is three lines in `common/ble-proxy.yaml` — move the filter
+keys from `bluetooth_proxy:` to `ble_advert_filter:`, give that the `ble_proxy`
+id the lambdas already use, and point `external_components` at the new repo.
+The hook repo's README has the exact diff under *Migrating from the
+bluetooth_proxy fork*. All eight fleet families already validate that way on
+2026.10.0-dev. It is a C++ change, so bump `ble_proxy_version` and roll it like
+any other.
+
+Until the fleet is on 2026.10, **any filter change lands in both repos** or the
+parity check goes red.
 
 Other things that would need work:
 

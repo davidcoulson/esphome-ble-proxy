@@ -104,10 +104,15 @@ share one list.
 Every proxy advertises an iBeacon:
 
 ```yaml
+# common/ble-proxy.yaml
+substitutions:
+  ble_beacon_uuid: fde3b150-2f64-43ba-aee9-867f75ee4a6f   # <- set your own
+  ble_beacon_major: "1"
+
 esp32_ble_beacon:
   type: iBeacon
-  uuid: fde3b150-2f64-43ba-aee9-867f75ee4a6f
-  major: 1
+  uuid: ${ble_beacon_uuid}
+  major: ${ble_beacon_major}
   minor: 1
   min_interval: 500ms
   max_interval: 1000ms
@@ -125,11 +130,19 @@ Details worth knowing before you change any of it:
   the Bluetooth MAC, which ESP-IDF derives from the same base as the scanner's
   own address. The payload is just a carrier — which is why `minor` is a
   constant rather than derived per device.
-- **`major: 1` must match the `allow_ibeacon` filter.** Change one, change both.
-  iBeacon is Apple manufacturer data subtype `0x02`, so the `0x004C` entry in
-  `manufacturer_blocklist` drops *every* iBeacon — including your own probes —
-  unless `allow_ibeacon` exempts them. Without it the calibration matrix comes
-  back empty.
+- **The beacon and the `allow_ibeacon` rule read the same two substitutions**,
+  so they cannot drift apart. iBeacon is Apple manufacturer data subtype `0x02`,
+  so the `0x004C` entry in `manufacturer_blocklist` drops *every* iBeacon —
+  including your own probes — unless `allow_ibeacon` exempts them. Without it
+  the calibration matrix comes back empty.
+- **Set your own `ble_beacon_uuid`, the same on every proxy you own.** The uuid
+  is what scopes the rule to *your* beacons (fork v1.7.0+). Before that the rule
+  was `major: 1` alone, and major 1 is the commonest vendor default there is —
+  anybody's beacon left on its defaults was forwarded too, at the loose −95
+  limit. `uuidgen` makes one; the [wizard](https://davidcoulson.github.io/esphome-ble-proxy/)
+  generates one and remembers it. The value shipped in this repo is this
+  fleet's — harmless to reuse, but then your rule also admits beacons from
+  anyone else who did the same.
 - **`rssi: -95` on that rule, not −127.** −127 would forward at any strength, but
   it also disables the component's internal pre-gate: with something allowed
   through unconditionally, nothing can be rejected on RSSI alone, so every

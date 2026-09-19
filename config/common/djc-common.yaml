@@ -127,7 +127,13 @@ text_sensor:
     icon: mdi:clock-start
     entity_category: diagnostic
     lambda: |-
-      int uptime_sec = id(esp32_uptime_sec).state;
+      // The uptime sensor has no reading for the first seconds after boot.
+      // Casting that NaN to int yields INT_MAX and publishes "24855d".
+      // x != x is a NaN test that needs no extra headers. Returning {}
+      // means "nothing to publish yet".
+      float raw = id(esp32_uptime_sec).state;
+      if (raw != raw || raw < 0) return {};
+      int uptime_sec = (int) raw;
       int days = uptime_sec / 86400;
       int hours = (uptime_sec % 86400) / 3600;
       int minutes = (uptime_sec % 3600) / 60;
@@ -192,7 +198,12 @@ interval:
     then:
       - lambda: |-
           static uint32_t next_pub = 0;
-          uint32_t up = (uint32_t) id(esp32_uptime_sec).state;
+          // Same NaN guard as above, and it matters more here: a NaN cast
+          // latched next_pub billions of seconds into the future, so the
+          // sensor never published again and stayed frozen on the bad value.
+          float raw = id(esp32_uptime_sec).state;
+          if (raw != raw || raw < 0) return;
+          uint32_t up = (uint32_t) raw;
           uint32_t period = up < 300 ? 10 : (up < 900 ? 30 : (up < 3600 ? 60 : 600));
           if (up >= next_pub) {
             next_pub = up + period;

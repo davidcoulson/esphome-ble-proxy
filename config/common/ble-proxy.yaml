@@ -43,12 +43,19 @@
 # same-day revision counter - without it a second edit on the same date would
 # produce an identical version and devices would look up to date when they are not.
 substitutions:
-  ble_proxy_version: "2026.09.19.0"
+  ble_proxy_version: "2026.09.19.1"
+  # The proximity UUID our probes beacon with AND the one the allow_ibeacon rule
+  # below is scoped to. Defined once so the two cannot drift apart: a mismatch
+  # would silently empty the BPS calibration matrix.
+  ble_beacon_uuid: fde3b150-2f64-43ba-aee9-867f75ee4a6f
+  ble_beacon_major: "1"
 
 packages:
-  # IRKs are pulled from a Home Assistant entity at runtime, so a new phone is
-  # an edit in HA rather than a reflash of every proxy. The irks: list below
-  # is now only the first-boot seed. See irks-from-ha.yaml.
+  # IRKs are pulled from a Home Assistant entity at runtime (sensor.ble_proxy_irks,
+  # attribute `irks`, defined in /config/packages/ble_proxy_irks.yaml). Adding or
+  # replacing a phone is an edit to ble_proxy_irks in HA's secrets.yaml, not a
+  # reflash of every proxy. The irks: list further down is now only the
+  # first-boot seed. Needs fork v1.6.0+ for set_irks(). See irks-from-ha.yaml.
   irks_from_ha: !include irks-from-ha.yaml
 
 esp32:
@@ -93,10 +100,26 @@ external_components:
       # same code as v1.3.2. ble_proxy_version was therefore NOT bumped: no
       # proxy needs reflashing for this, and a bump would have forced ~70
       # byte-identical OTAs.
-      # v1.6.0 = set_irks(), for irks-from-ha.yaml. Also carries v1.5.1, which
-      # widens allow_findmy to AirPods proximity-pairing adverts (subtype
-      # 0x07) - a small increase in forwarded Apple traffic.
-      ref: v1.6.0
+      #
+      # v1.5.1 = allow_findmy also exempts AirPods proximity-pairing adverts
+      # (Apple subtype 0x07). AirPods near their owner send that instead of
+      # Offline Finding 0x12, from the same rotated address, and v1.5.0 dropped
+      # it - so a case on a desk was heard by one blocklist-free receiver and
+      # nothing else. This one DOES change the C++, hence the version bump.
+      #
+      # v1.6.0 = set_irks(): the IRK list can be replaced at runtime, which is
+      # what irks-from-ha.yaml uses. Built on v1.5.1, nothing else changed.
+      #
+      # v1.7.0 = review fixes + uuid-scoped iBeacon rules. BEHAVIOUR CHANGES:
+      #  - allow_ibeacon rules can name a uuid (used below);
+      #  - an RPA matching no IRK is now dropped AFTER the iBeacon / FindMy /
+      #    service-UUID rules have had a look, so service_uuid_allowlist can
+      #    rescue a device pairing from a resolvable address, as documented;
+      #  - only type-1 (random) addresses are classed as RPA / non-resolvable,
+      #    so a BONDED device reported by its public identity address is no
+      #    longer dropped by drop_non_resolvable;
+      #  - the pre-gate follows runtime changes to the RSSI threshold number.
+      ref: v1.7.0
     components: [bluetooth_proxy]
     # Kept at 1min despite the pin: the cached clone under
     # .esphome/external_components/ is keyed per build host, and a stale one
@@ -147,7 +170,8 @@ ota:
 # deriving it from the static IP's last octet, but this fleet is DHCP and it
 # would buy nothing.
 #
-# major 1 matches the allow_ibeacon filter below. Change one, change both.
+# The uuid and major come from the substitutions at the top of this file, which
+# the allow_ibeacon rule below uses too - so they cannot be changed separately.
 #
 # 500-1000ms is slow for a beacon and deliberately so: this radio is shared
 # with WiFi and with a 37.5% BLE scan duty cycle, and calibration samples over
@@ -155,8 +179,8 @@ ota:
 # -----------------------------------------------------------------------
 esp32_ble_beacon:
   type: iBeacon
-  uuid: fde3b150-2f64-43ba-aee9-867f75ee4a6f
-  major: 1
+  uuid: ${ble_beacon_uuid}
+  major: ${ble_beacon_major}
   minor: 1
   min_interval: 500ms
   max_interval: 1000ms
@@ -238,10 +262,13 @@ bluetooth_proxy:
   # exempts HAP specifically; AirPods/AirTags/Continuity stay blocked.
   allow_homekit: true
 
-  # Apple FindMy (Offline Finding) accessories - AirTags, AirPods in separated
-  # mode, licensed third-party tags - advertise under Apple's company id with
-  # subtype 0x12 from a random static address, so the 0x004C entry above is
-  # the only thing dropping them and it drops every one. Bermuda holds our
+  # Apple FindMy (Offline Finding) accessories - AirTags, AirPods, licensed
+  # third-party tags - advertise under Apple's company id with subtype 0x12
+  # from a random static address, so the 0x004C entry above is the only thing
+  # dropping them and it drops every one. AirPods near their owner send the
+  # proximity-pairing subtype 0x07 instead, on the same rotated address, and
+  # that is exempted too - otherwise a case on the desk is heard only by
+  # receivers that run no Apple blocklist at all. Bermuda holds our
   # accessories' pairing keys and follows their address rotation, but only if
   # the adverts reach it. There is no per-accessory scoping (the advert
   # carries nothing a proxy could match on), so every FindMy tag in range
@@ -260,21 +287,31 @@ bluetooth_proxy:
   # the public Espressif MAC, so they carry no IRK and nothing else protects
   # them - without this the calibration matrix comes back empty.
   #
-  # Scoped to major 1 rather than a bare `true`, so OUR probes are exempt and
-  # every other iBeacon in range - AirTags, shop beacons, neighbours - stays
-  # blocked. minor is deliberately not listed: BPS matches probes on their MAC
+  # Scoped to OUR uuid + major rather than a bare `true`, so our probes are
+  # exempt and every other iBeacon in range - shop beacons, neighbours - stays
+  # blocked.
+  #
+  # THE UUID IS WHAT MAKES THAT TRUE (added 2026-09-19, fork v1.7.0). Until then
+  # the rule was `major: 1` alone and the matcher never read the uuid - and
+  # major 1 is the commonest vendor default there is, so anybody's beacon left
+  # on its defaults was forwarded too, at the -95 limit below, i.e. from further
+  # away than anything else this proxy forwards. This comment used to claim
+  # otherwise; it was wrong.
+  #
+  # minor is deliberately not listed: BPS matches probes on their MAC
   # and never reads the beacon payload, so a fleet-wide major/minor is all the
   # esp32_ble_beacon block above needs to emit.
   allow_ibeacon:
-    - major: 1
+    - uuid: ${ble_beacon_uuid}
+      major: ${ble_beacon_major}
       # -127 = forward our own probes at ANY strength, overriding both
       # rssi_threshold (-75) and rssi_floor (-90). Deliberate: BPS receiver
       # auto-calibration fits a per-receiver correction from probe-to-probe
       # distances, and the weak cross-room pairs are the ones that carry the
       # geometry. At -75 the matrix came back mostly empty.
       #
-      # This is scoped to major 1, so it applies ONLY to our beacons - every
-      # other iBeacon in range is still dropped by manufacturer_blocklist.
+      # This is scoped to our uuid + major, so it applies ONLY to our beacons -
+      # every other iBeacon in range is still dropped by manufacturer_blocklist.
       #
       # -95 rather than -127 deliberately. -127 would forward at literally any
       # strength, but it also disables the component's internal pre-gate: with
@@ -349,9 +386,10 @@ bluetooth_proxy:
   # so it is dropped. Devices with fixed addresses are unaffected (no IRK, so
   # the RPA test never fires for them). Mirrored from HA's private_ble_device.
   #
-  # FIRST-BOOT SEED ONLY since irks-from-ha.yaml: once Home Assistant has
-  # delivered a list it replaces this one, and survives reboots and reflashes.
-  # Edit the list in HA, not here.
+  # FIRST-BOOT SEED ONLY since 2026-09-19 (irks-from-ha.yaml): once Home
+  # Assistant has delivered its list, that list replaces this one and survives
+  # reboots and reflashes. Edit the list in HA's secrets.yaml (ble_proxy_irks),
+  # not here - changing these has no effect on a proxy that has heard from HA.
   irks:
     - !secret ble_irk_phone_1
     - !secret ble_irk_watch_1

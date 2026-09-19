@@ -383,6 +383,10 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
       <span class="t"><b>Beacon for receiver auto-calibration</b>
       <em>Each proxy advertises an iBeacon so its siblings can range it. Lets BPS fit a per-receiver
       distance correction. Harmless if you don't use BPS.</em></span></label>
+
+    <label class="f" id="uuidwrap"><span class="lbl">Beacon UUID</span>
+      <input type="text" id="beaconUuid" spellcheck="false" maxlength="36">
+      <span class="hint" id="uuidhint"></span></label>
   </fieldset>
 
 </form>
@@ -426,7 +430,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
 (function(){
 "use strict";
 
-var FORK_TAG = "v1.5.0";
+var FORK_TAG = "v1.7.0";
 var MIN_ESPHOME = "2026.9.0";
 var IDF = "6.1.0";
 
@@ -483,8 +487,31 @@ function cfg(){
     irk:$("fIrk").checked, irkN:Math.max(0,parseInt($("irkCount").value,10)||0),
     apple:$("fApple").checked, findmy:$("fApple").checked && $("fFindmy").checked,
     nonres:$("fNonRes").checked, tile:$("fTile").checked, pair:$("fPair").checked,
-    macs:macLines(), profile:$("profile").value, calib:$("calib").checked
+    macs:macLines(), profile:$("profile").value, calib:$("calib").checked,
+    uuid:beaconUuid()
   };
+}
+/* The beacon uuid is what scopes the allow_ibeacon rule, so every proxy in ONE
+   fleet must share it and no two fleets should. Standalone configs get a random
+   one, remembered in this browser so the next proxy you generate matches the
+   last. Fleet-mode files leave it to the shared package unless you type one. */
+var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+var uuidByMode = { standalone: "", fleet: "" };
+function randomUuid(){
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  var b = new Uint8Array(16); (window.crypto || {getRandomValues:function(a){for(var i=0;i<a.length;i++)a[i]=Math.random()*256;}}).getRandomValues(b);
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  var h = Array.prototype.map.call(b, function(x){ return ("0"+x.toString(16)).slice(-2); }).join("");
+  return h.slice(0,8)+"-"+h.slice(8,12)+"-"+h.slice(12,16)+"-"+h.slice(16,20)+"-"+h.slice(20);
+}
+function initUuid(){
+  var saved = ""; try { saved = localStorage.getItem("bleproxy.beaconUuid") || ""; } catch(e){}
+  uuidByMode.standalone = UUID_RE.test(saved) ? saved : randomUuid();
+  try { localStorage.setItem("bleproxy.beaconUuid", uuidByMode.standalone); } catch(e){}
+}
+function beaconUuid(){
+  var v = ($("beaconUuid").value || "").trim().toLowerCase();
+  return UUID_RE.test(v) ? v : "";
 }
 function devName(c){ return c.b.prefix + "-" + c.mac; }
 
@@ -547,20 +574,26 @@ function proxyBlock(c, indent){
       L.push(p+"    rssi: -85");
     }
   }
-  if (c.calib && c.apple){
+  if (c.calib && c.uuid){
     L.push("");
-    L.push(p+"  # iBeacon is Apple manufacturer data subtype 0x02, so the 0x004C entry above drops");
-    L.push(p+"  # EVERY iBeacon — allow_homekit does not rescue them, that exempts 0x06 only.");
-    L.push(p+"  # Scoped to major 1 so only OUR OWN calibration beacons are exempt; every other");
-    L.push(p+"  # iBeacon in range stays blocked.");
+    L.push(p+"  # Our own calibration beacons. Two things need this rule, not one:");
+    L.push(p+"  #  - iBeacon is Apple manufacturer data (subtype 0x02), so a 0x004C blocklist entry");
+    L.push(p+"  #    drops EVERY iBeacon, and allow_homekit does not rescue them (that is 0x06);");
+    L.push(p+"  #  - the weak cross-room pairs are the ones carrying the geometry, and they sit");
+    L.push(p+"  #    below rssi_threshold - without their own limit they are dropped whether or not");
+    L.push(p+"  #    Apple is blocked, and the calibration matrix comes back mostly empty.");
     L.push(p+"  #");
-    L.push(p+"  # -95 rather than -127: the weak cross-room pairs are the ones carrying the");
-    L.push(p+"  # geometry, so this is deliberately far looser than the fleet threshold. But -127");
-    L.push(p+"  # would disable the component's internal pre-gate — with something allowed through");
-    L.push(p+"  # unconditionally nothing can be rejected on RSSI alone, so every advert would");
-    L.push(p+"  # reach the categoriser. -95 is at the ESP32's own receive sensitivity and keeps it.");
+    L.push(p+"  # SCOPED BY UUID, not just major. major/minor are small integers every vendor");
+    L.push(p+"  # starts counting from 1, so `major: 1` alone admits anybody's beacon left on its");
+    L.push(p+"  # defaults - at this rule's -95, i.e. from further away than anything else here.");
+    L.push(p+"  # Use the SAME uuid on every proxy you own (it is in esp32_ble_beacon below too).");
+    L.push(p+"  #");
+    L.push(p+"  # -95 rather than -127: -127 would disable the component's pre-gate - with something");
+    L.push(p+"  # allowed through unconditionally nothing can be rejected on RSSI alone. -95 is at");
+    L.push(p+"  # the ESP32's own receive sensitivity and keeps it.");
     L.push(p+"  allow_ibeacon:");
-    L.push(p+"    - major: 1");
+    L.push(p+"    - uuid: "+c.uuid);
+    L.push(p+"      major: 1");
     L.push(p+"      rssi: -95");
   }
   if (c.macs.length || !c.macs.length){
@@ -574,7 +607,7 @@ function proxyBlock(c, indent){
   }
   var uuids = [];
   if (c.pair){
-    uuids.push([p+"    - 0xFFF6", "# Matter commissioning — commissioning devices advertise from a"]);
+    uuids.push([p+"    - 0xFFF6", "# Matter commissioning"]);
     uuids.push([p+'    - "00467768-6228-2272-4663-277478268000"', "# Improv Wi-Fi"]);
     uuids.push([p+"    - 0xFE59", "# Nordic DFU"]);
   }
@@ -608,7 +641,7 @@ function trackerBlock(c){
   return [
 "esp32_ble:",
 "  max_connections: "+(c.b.slots||3),
-(c.calib ? "  # ON so this proxy beacons for receiver auto-calibration (see esp32_ble_beacon\n  #    below). Negligible airtime next to the scan duty cycle already running.\n  advertising: true" : "  advertising: false"),
+((c.calib && c.uuid) ? "  # ON so this proxy beacons for receiver auto-calibration (see esp32_ble_beacon\n  #    below). Negligible airtime next to the scan duty cycle already running.\n  advertising: true" : "  advertising: false"),
 "",
 "esp32_ble_tracker:",
 "  id: ble_tracker",
@@ -629,7 +662,7 @@ function trackerBlock(c){
   ].join("\n");
 }
 
-function beaconBlock(){
+function beaconBlock(c){
   return [
 "# ---------------------------------------------------------------------------",
 "# Receiver auto-calibration beacon. Every proxy advertises an iBeacon so its",
@@ -638,14 +671,14 @@ function beaconBlock(){
 "#",
 "# uuid/major/minor are not how a probe is identified — that is done on the",
 "# Bluetooth MAC — so the payload is just a carrier and minor is a constant.",
-"# major 1 must match the allow_ibeacon filter above. Change one, change both.",
+"# uuid + major must match the allow_ibeacon rule above, on EVERY proxy you own.",
 "#",
 "# 500-1000ms is slow for a beacon, deliberately: this radio is shared, and",
 "# calibration samples over minutes.",
 "# ---------------------------------------------------------------------------",
 "esp32_ble_beacon:",
 "  type: iBeacon",
-"  uuid: fde3b150-2f64-43ba-aee9-867f75ee4a6f",
+"  uuid: "+c.uuid,
 "  major: 1",
 "  minor: 1",
 "  min_interval: 500ms",
@@ -990,7 +1023,7 @@ function genStandalone(c){
   L.push(trackerBlock(c));
   L.push("");
   L.push(proxyBlock(c,""));
-  if (c.calib){ L.push(""); L.push(beaconBlock()); }
+  if (c.calib && c.uuid){ L.push(""); L.push(beaconBlock(c)); }
   L.push("");
   L.push(entitiesBlock(c));
   L.push("");
@@ -1015,6 +1048,11 @@ function genFleet(c){
   L.push("  mac: "+c.mac);
   L.push('  area: "'+c.area+'"');
   if (b.modules) L.push('  module: "'+c.module+'"');
+  if (c.uuid){
+    L.push("  # Overrides the beacon uuid in common/ble-proxy.yaml, which both the beacon and");
+    L.push("  # the allow_ibeacon rule read. Every proxy you own must carry the same one.");
+    L.push("  ble_beacon_uuid: "+c.uuid);
+  }
   L.push("");
   L.push("packages:");
   if (b.family){
@@ -1171,9 +1209,10 @@ function genNext(c){
   if (c.apple && !c.findmy)
     notes.push(["","AirTags and FindMy tags will be dropped.","They advertise under Apple's company id, so the "+
       "blocklist takes them. Tick \"keep AirTags\" if you track any."]);
-  if (c.calib && !c.apple)
-    notes.push(["","Calibration beacons need no carve-out here.","With Apple filtering off, nothing is dropping "+
-      "your iBeacons, so no <code>allow_ibeacon</code> rule is emitted."]);
+  if (c.calib && (mode === "standalone" || c.uuid))
+    notes.push(["","Use this beacon UUID on every proxy you own.","<code>"+esc(c.uuid)+"</code> scopes the rule that lets "+
+      "your proxies hear each other's calibration beacons. A proxy with a different one is invisible to the rest. This "+
+      "browser remembers it for the next config you generate; write it down if you'll use another."]);
   notes.push(["","Tuning is live.","<b>BLE RSSI Threshold</b> and <b>BLE Scan Profile</b> are Home Assistant "+
     "entities — no reflash. Leave it a day, then tune against the drop rate. "+
     "<a href='https://github.com/davidcoulson/esphome-ble-proxy/blob/main/docs/tuning.md'>tuning.md →</a>"]);
@@ -1196,6 +1235,13 @@ function render(){
   $("bandwrap").hidden = !b.band;
   $("irkwrap").hidden = !c.irk;
   $("findmyWrap").hidden = !$("fApple").checked;
+  $("uuidwrap").hidden = !$("calib").checked;
+  var typed = ($("beaconUuid").value || "").trim();
+  $("uuidhint").innerHTML = (typed && !UUID_RE.test(typed))
+    ? "<span style='color:var(--warn)'>Not a UUID (8-4-4-4-12 hex digits).</span> " + (mode === "standalone" ? "Falling back to none — the rule is left out until this is fixed." : "Ignored; the package's own is used.")
+    : (mode === "standalone"
+        ? "Scopes the rule that lets your proxies hear each other's beacons. <b>Every proxy you own must use the same one</b> — this browser remembers it. Generated randomly so your fleet doesn't share one with anybody else's."
+        : "Leave empty to use the one in <code>common/ble-proxy.yaml</code> (<code>ble_beacon_uuid</code>). If this isn't the fleet that package came from, set your own here — the same on every proxy.");
   $("modehint").textContent = mode === "standalone"
     ? "One file, nothing else needed. Everything inline, heavily commented. Pick this if you're setting up a proxy from scratch."
     : "A short device file that includes the shared packages from this repo's config/common/. Pick this if you're adding to the fleet.";
@@ -1251,7 +1297,9 @@ $("f").addEventListener("change", render);
 // `mode` to undefined.
 document.querySelectorAll(".seg button[data-mode]").forEach(function(btn){
   btn.addEventListener("click", function(){
+    uuidByMode[mode] = ($("beaconUuid").value || "").trim();
     mode = btn.dataset.mode;
+    $("beaconUuid").value = uuidByMode[mode];
     document.querySelectorAll(".seg button[data-mode]").forEach(function(x){
       x.setAttribute("aria-pressed", String(x === btn));
     });
@@ -1389,6 +1437,13 @@ document.querySelectorAll(".modeswitch button").forEach(function(btn){
   btn.addEventListener("click", function(){ setTop(btn.dataset.top); });
 });
 
+initUuid();
+$("beaconUuid").value = uuidByMode[mode];
+$("beaconUuid").addEventListener("change", function(){
+  if (mode === "standalone" && UUID_RE.test(this.value.trim())){
+    try { localStorage.setItem("bleproxy.beaconUuid", this.value.trim().toLowerCase()); } catch(e){}
+  }
+});
 buildBoardGrid();
 renderQuick();
 fillModules();

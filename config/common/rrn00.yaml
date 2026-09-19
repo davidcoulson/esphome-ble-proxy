@@ -48,7 +48,7 @@ esphome:
   friendly_name: "${area} RRN00 ${mac}"
   area: "${area}"
   project:
-    name: dcoulson.ble-rrn00-${board['${module}']['project']}
+    name: dcoulson.ble-rrn00-esp8685
     version: "2026.09.17.0+ble${ble_proxy_version}"
 
 esp32:
