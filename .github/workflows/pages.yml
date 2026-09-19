@@ -38,7 +38,7 @@ jobs:
         # board x variant. The wizard asks two questions that cannot be answered
         # after the fact because both are compile-time, so every combination is
         # built ahead of time:
-        #   standard / nophones  - is the Apple manufacturer blocklist on
+        #   standard / noapple   - is the Apple manufacturer blocklist on
         #   -adv suffix          - advertisements only, no connection relaying
         slug:
           - esp32
@@ -51,8 +51,8 @@ jobs:
         variant:
           - standard
           - standard-adv
-          - nophones
-          - nophones-adv
+          - noapple
+          - noapple-adv
     steps:
       - uses: actions/checkout@v4
 

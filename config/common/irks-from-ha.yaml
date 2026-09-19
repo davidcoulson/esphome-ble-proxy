@@ -1,0 +1,102 @@
+# =============================================================================
+# IRKs from Home Assistant — change the list once in HA, every proxy picks it up.
+#
+# Without this, the IRK list is compile-time: a new phone means editing
+# secrets.yaml and reflashing every proxy. With it, each proxy subscribes to one
+# Home Assistant entity and reloads its keys whenever that entity changes. No
+# reflash, no reboot. Needs bluetooth_proxy fork v1.6.0+ (set_irks()).
+#
+# HOME ASSISTANT SIDE — see docs/irks-from-ha.md for the full snippet. In short,
+# a template sensor whose `irks` ATTRIBUTE holds the list, with a name next to
+# each key so you can tell whose is whose:
+#
+#     David phone:  00112233445566778899aabbccddeeff
+#     David watch:  ffeeddccbbaa99887766554433221100
+#
+# It has to be an attribute, not the state: HA caps states at 255 characters
+# and eight keys are 256 hex characters before any separators or names.
+#
+# PRECEDENCE
+#   1. the HA entity, whenever it delivers at least one valid key
+#   2. the last list HA delivered, saved in flash — used from boot until HA
+#      connects, and forever if the entity is deleted or broken
+#   3. the compile-time `irks:` list in bluetooth_proxy — first boot only, before
+#      HA has ever delivered anything
+#
+# An entity that delivers NO valid key (unavailable, unknown, empty, during an
+# HA restart) is ignored and the current list kept. That matters: with the Apple
+# manufacturer blocklist on, a wiped list silently drops our own phones. To
+# really empty the list, set the attribute to the literal word `clear`.
+# =============================================================================
+
+substitutions:
+  # Override per device or per family if you keep the list elsewhere.
+  irk_entity: sensor.ble_proxy_irks
+  irk_attribute: irks
+
+globals:
+  # Last good list, persisted to NVS. [0] = key count, then up to 16 keys of
+  # 16 bytes. Stored as raw bytes, not hex: a restored std::string global is
+  # capped at 254 bytes, and eight keys in hex are already 256.
+  - id: g_irk_store
+    type: 'std::array<uint8_t, 257>'
+    restore_value: true
+
+esphome:
+  on_boot:
+    # -100: after every component's setup(), including bluetooth_proxy's, which
+    # loads the compile-time irks: list. set_irks() REPLACES the list, so the
+    # flash copy wins over the compiled one — which is the point: once HA has
+    # delivered a list, that list is the truth even across reflashes.
+    # Scanning does not start until HA connects (see ble-proxy.yaml api:), so
+    # there is no window in which the wrong list filters anything.
+    - priority: -100
+      then:
+        - lambda: |-
+            const auto &s = id(g_irk_store);
+            const uint8_t n = s[0];
+            if (n == 0 || n > 16) return;  // nothing saved yet (or garbage): keep compile-time list
+            std::string hex;
+            hex.reserve(n * 33);
+            for (uint8_t k = 0; k < n; k++) {
+              hex += format_hex(&s[1 + k * 16], 16);
+              hex += ',';
+            }
+            id(ble_proxy).set_irks(hex);
+
+text_sensor:
+  - platform: homeassistant
+    id: ha_irks
+    entity_id: ${irk_entity}
+    attribute: ${irk_attribute}
+    # Internal: the proxy consumes it, nothing in HA needs it echoed back —
+    # and publishing it would put the keys in yet another entity's history.
+    internal: true
+    on_value:
+      - lambda: |-
+          auto &s = id(g_irk_store);
+          if (x == "clear") {
+            id(ble_proxy).clear_irks();
+          } else if (id(ble_proxy).set_irks(x) < 0) {
+            return;  // no valid key in it: keep what we have (see header)
+          }
+          // Persist, but only when the list actually changed. HA resends the
+          // attribute on every reconnect; writing flash each time would wear it.
+          const auto &live = id(ble_proxy).get_irks();
+          const uint8_t n = live.size() > 16 ? 16 : live.size();
+          std::array<uint8_t, 257> next{};
+          next[0] = n;
+          for (uint8_t k = 0; k < n; k++)
+            memcpy(&next[1 + k * 16], live[k].data(), 16);
+          if (next != s) s = next;
+
+sensor:
+  # How many keys this proxy is actually using. Across a fleet, one proxy
+  # disagreeing with the rest is the thing to look for.
+  - platform: template
+    name: "BLE IRKs Loaded"
+    icon: mdi:key-chain
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: 60s
+    lambda: 'return (float) id(ble_proxy).get_irk_count();'

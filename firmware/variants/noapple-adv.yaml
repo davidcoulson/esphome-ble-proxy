@@ -1,14 +1,15 @@
-# Variant: no-phones, advertisements only.
+# Variant: no-apple, advertisements only.
 # Blocks Apple. Home Assistant cannot connect to BLE devices through it.
 #
-# For proxies that exist to reach sensors and tags (BTHome, Xiaomi, SwitchBot,
-# Tile, thermometers) rather than to track people. Apple manufacturer data is
-# ~69% of what a proxy hears in a normal house and none of it is useful here.
+# Apple manufacturer data is ~69% of what a proxy hears in a normal house.
+# This drops it, keeping HomeKit accessories and FindMy tags.
 #
-# >> THIS WILL STOP HOME ASSISTANT SEEING YOUR IPHONES AND APPLE WATCHES. <<
-# They advertise Apple manufacturer data, and with no IRKs configured nothing
-# marks them protected. That is the deliberate trade: pick a standard variant
-# if you track phones over Bluetooth.
+# >> YOUR OWN iPHONES AND WATCHES ARE DROPPED TOO - UNTIL YOU GIVE IT THEIR IRKs. <<
+# An advertisement is protected from this blocklist only when its rotating
+# address matches an IRK, and a prebuilt binary starts with none. Supply them
+# from Home Assistant (docs/irks-from-ha.md) - no reflash - and your phones come
+# back while everyone else's stay blocked. A proxy that only exists for sensors
+# and tags can skip that step entirely.
 bluetooth_proxy:
   # active: false — forwards advertisements but will not relay connections.
   # Home Assistant cannot reach a lock, an LED strip or a SwitchBot through this

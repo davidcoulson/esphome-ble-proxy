@@ -43,7 +43,13 @@
 # same-day revision counter - without it a second edit on the same date would
 # produce an identical version and devices would look up to date when they are not.
 substitutions:
-  ble_proxy_version: "2026.09.17.1"
+  ble_proxy_version: "2026.09.19.0"
+
+packages:
+  # IRKs are pulled from a Home Assistant entity at runtime, so a new phone is
+  # an edit in HA rather than a reflash of every proxy. The irks: list below
+  # is now only the first-boot seed. See irks-from-ha.yaml.
+  irks_from_ha: !include irks-from-ha.yaml
 
 esp32:
   framework:
@@ -87,7 +93,10 @@ external_components:
       # same code as v1.3.2. ble_proxy_version was therefore NOT bumped: no
       # proxy needs reflashing for this, and a bump would have forced ~70
       # byte-identical OTAs.
-      ref: v1.5.0
+      # v1.6.0 = set_irks(), for irks-from-ha.yaml. Also carries v1.5.1, which
+      # widens allow_findmy to AirPods proximity-pairing adverts (subtype
+      # 0x07) - a small increase in forwarded Apple traffic.
+      ref: v1.6.0
     components: [bluetooth_proxy]
     # Kept at 1min despite the pin: the cached clone under
     # .esphome/external_components/ is keyed per build host, and a stale one
@@ -339,6 +348,10 @@ bluetooth_proxy:
   # none of these belongs to somebody else, rotates, and can never be tracked -
   # so it is dropped. Devices with fixed addresses are unaffected (no IRK, so
   # the RPA test never fires for them). Mirrored from HA's private_ble_device.
+  #
+  # FIRST-BOOT SEED ONLY since irks-from-ha.yaml: once Home Assistant has
+  # delivered a list it replaces this one, and survives reboots and reflashes.
+  # Edit the list in HA, not here.
   irks:
     - !secret ble_irk_phone_1
     - !secret ble_irk_watch_1

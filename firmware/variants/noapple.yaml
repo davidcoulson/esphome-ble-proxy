@@ -1,0 +1,24 @@
+# Variant: no-apple — blocks Apple, Home Assistant can connect through it.
+#
+# Apple manufacturer data is ~69% of what a proxy hears in a normal house.
+# This drops it, keeping HomeKit accessories and FindMy tags.
+#
+# >> YOUR OWN iPHONES AND WATCHES ARE DROPPED TOO - UNTIL YOU GIVE IT THEIR IRKs. <<
+# An advertisement is protected from this blocklist only when its rotating
+# address matches an IRK, and a prebuilt binary starts with none. Supply them
+# from Home Assistant (docs/irks-from-ha.md) - no reflash - and your phones come
+# back while everyone else's stay blocked. A proxy that only exists for sensors
+# and tags can skip that step entirely.
+bluetooth_proxy:
+  active: true
+  manufacturer_blocklist:
+    - 0x004C  # Apple
+  # HomeKit accessories advertise under Apple's company id with subtype 0x06,
+  # so the blocklist would silently kill every one — and unlike phones they
+  # have no IRK to rescue them.
+  allow_homekit: true
+  # AirTags and licensed third-party tags: Apple company id, subtype 0x12. No
+  # per-accessory scoping exists, so every FindMy tag in range comes through;
+  # -85 keeps a neighbour's AirTag at the fence out of it.
+  allow_findmy:
+    rssi: -85
