@@ -134,10 +134,14 @@ attribute, and each proxy's flash.
   is kept out of the recorder by the exclude above. It can still appear in a
   diagnostics download (the same exposure as
   [agittins/bermuda#839](https://github.com/agittins/bermuda/issues/839)).
-- **It travels over the ESPHome API.** The fleet encrypts that. Quick-flash
-  firmware does not: it is a generic binary with no key to pre-share. Adopting
-  it in Home Assistant does not change that; adopting it into an ESPHome
-  dashboard and building it with `api: encryption:` does. On an untrusted
-  network, do that before pointing it at your IRKs.
+- **It travels over the ESPHome API, which is only as private as you make it.** The shared
+  packages here (`djc-common.yaml`) set **no `api: encryption:` key and no OTA password**, so on
+  this fleet the list crosses the network in the clear each time Home Assistant (re)connects to
+  a proxy — protected by WPA2 on the Wi-Fi hop and by nothing on the wired one. That is not a
+  new class of exposure: compiled-in IRKs were already inside every unencrypted OTA image. But
+  it is more frequent. If the IoT network is not one you fully trust, add an encryption key
+  (`api: encryption: key: !secret ...`) before relying on this. Quick-flash firmware is in the
+  same position: a generic binary has no key to pre-share until the device is adopted into an
+  ESPHome dashboard and rebuilt with one.
 - **An IRK identifies a person's phone.** Anyone holding one can recognise that
   phone's rotating address. Treat the list like a password.
