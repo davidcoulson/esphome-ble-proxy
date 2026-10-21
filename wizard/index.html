@@ -420,7 +420,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
   Generated configs reference <code>!secret</code> for every credential — nothing sensitive is
   produced here, and nothing you type leaves your browser. ·
   <a href="https://github.com/davidcoulson/esphome-ble-proxy">esphome-ble-proxy</a> ·
-  <a href="https://github.com/davidcoulson/esphome-bluetooth-proxy-filter">the filter fork</a>
+  <a href="https://github.com/davidcoulson/esphome-ble-advert-filter">the filter component</a>
 </footer>
 
 <script type="module"
@@ -430,8 +430,8 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--muted);fon
 (function(){
 "use strict";
 
-var FORK_TAG = "v1.7.0";
-var MIN_ESPHOME = "2026.9.0";
+var FILTER_TAG = "v2.0.3";
+var MIN_ESPHOME = "2026.10.0";
 var IDF = "6.1.0";
 
 var BOARDS = {
@@ -515,13 +515,17 @@ function beaconUuid(){
 }
 function devName(c){ return c.b.prefix + "-" + c.mac; }
 
-/* ───── the bluetooth_proxy block, shared by both modes ───── */
+/* ───── the bluetooth_proxy and ble_advert_filter blocks ───── */
 function proxyBlock(c, indent){
   var p = indent||"", L = [];
   L.push(p+"bluetooth_proxy:");
-  L.push(p+"  id: ble_proxy");
+  L.push(p+"  id: ble_proxy_core");
   L.push(p+"  active: true");
   if (c.b.slots) L.push(p+"  connection_slots: "+c.b.slots);
+  L.push("");
+  L.push(p+"# Every filter option lives here. It has the ble_proxy id the lambdas below call.");
+  L.push(p+"ble_advert_filter:");
+  L.push(p+"  id: ble_proxy");
   L.push(p+"  # Compile-time fallback only — the \"BLE RSSI Threshold\" number below restores on");
   L.push(p+"  # boot and overwrites this. Tune it there, not by reflashing.");
   L.push(p+"  rssi_threshold: "+c.rssi);
@@ -772,7 +776,7 @@ function entitiesBlock(c){
   L.push("sensor:");
   var sensors = [
     ["BLE Adverts Forwarded","sens_ble_adv_fwd","mdi:bluetooth-transfer","get_adv_forwarded()",
-     "Advertisement accounting from the forked component, so the effect of the threshold is\n  # measurable instead of guessed. The C++ counters are free-running totals; these report the\n  # delta since the last update so they graph as a rate. Unsigned subtraction stays correct\n  # across the uint32 rollover, so nothing needs resetting."],
+     "Advertisement accounting from ble_advert_filter, so the effect of the threshold is\n  # measurable instead of guessed. The C++ counters are free-running totals; these report the\n  # delta since the last update so they graph as a rate. Unsigned subtraction stays correct\n  # across the uint32 rollover, so nothing needs resetting."],
     ["BLE Adverts Dropped","sens_ble_adv_dropped","mdi:bluetooth-off","get_adv_dropped()",null],
     ["BLE RPAs Dropped","sens_ble_rpa_dropped","mdi:cellphone-remove","get_adv_dropped_rpa()",
      "Subset of Dropped: rotating addresses that resolved to none of your IRKs — i.e. other\n  # people's phones and watches. Separated out because it answers a different question than\n  # the RSSI drops: how much of the noise is untrackable."],
@@ -884,7 +888,7 @@ function genStandalone(c){
   L.push("# The point of this config is that it filters advertisements ON THE DEVICE,");
   L.push("# before they cross the network. Core ESPHome's bluetooth_proxy forwards every");
   L.push("# advertisement it hears — it has no RSSI, MAC or name filtering of any kind.");
-  L.push("# The external_components block below pulls a fork that adds it.");
+  L.push("# The external_components block below pulls a filter that plugs into it.");
   L.push("# =============================================================================");
   L.push("");
   L.push("substitutions:");
@@ -896,7 +900,7 @@ function genStandalone(c){
   L.push('  friendly_name: "${area} Proxy ${mac}"');
   L.push('  area: "${area}"');
   L.push("  name_add_mac_suffix: false");
-  L.push("  # Fail fast on an older builder: this config uses 2026.9-era keys.");
+  L.push("  # Fail fast on an older builder: the filter needs 2026.10's bluetooth_proxy hook.");
   L.push("  min_version: "+MIN_ESPHOME);
   L.push("  # ESPHome requires a namespace here (\"author.project\"). Change the namespace to");
   L.push("  # your own, and bump the version whenever you change this file — it surfaces as");
@@ -936,16 +940,15 @@ function genStandalone(c){
   L.push("  baud_rate: 0");
   L.push("  level: WARN");
   L.push("");
-  L.push("# >> RE-SYNC THIS FORK ON EVERY ESPHOME VERSION BUMP. <<");
-  L.push("# It pins a copy of a fast-moving core component. Pinned by TAG, not a branch:");
+  L.push("# Advertisement filtering for stock bluetooth_proxy. Pinned by TAG, not a branch:");
   L.push("# ref: main meant two devices flashed an hour apart could run different filter");
   L.push("# code with no way to tell from the version string.");
   L.push("external_components:");
   L.push("  - source:");
   L.push("      type: git");
-  L.push("      url: https://github.com/davidcoulson/esphome-bluetooth-proxy-filter");
-  L.push("      ref: "+FORK_TAG);
-  L.push("    components: [bluetooth_proxy]");
+  L.push("      url: https://github.com/davidcoulson/esphome-ble-advert-filter");
+  L.push("      ref: "+FILTER_TAG);
+  L.push("    components: [ble_advert_filter]");
   L.push("    # Short despite the pin: the cached clone under .esphome/external_components/");
   L.push("    # is keyed per build host, and a stale one has served a build the wrong code.");
   L.push("    # A tag is immutable, so re-checking it costs nothing.");
@@ -1124,7 +1127,7 @@ function genFleet(c){
     L.push("");
     L.push("# Per-device overrides of common/ble-proxy.yaml. Everything not listed here");
     L.push("# comes from the shared package — change it there to change the whole fleet.");
-    L.push("bluetooth_proxy:");
+    L.push("ble_advert_filter:");
     L.push(ov.join("\n"));
   }
   L.push("");

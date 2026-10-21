@@ -8,9 +8,10 @@ Expected. ESP-IDF is pinned to **6.1.0** in `djc-common.yaml` while 2026.9.0's
 of `esp_ota_get_bootloader_description()` and will not build on 5.x. Ignore it.
 
 **Build fails on an unknown key** (`watchdog_timeout`, `assertion_level`,
-`cpu_frequency`, `enable_lwip_mdns_queries`)
-Your ESPHome is older than 2026.9.0. `djc-common.yaml` sets
-`min_version: 2026.9.0` precisely so this fails fast rather than producing
+`cpu_frequency`, `enable_lwip_mdns_queries`), or on `ble_advert_filter` needing
+`bluetooth_proxy`'s filter hook
+Your ESPHome is older than 2026.10.0. `djc-common.yaml` sets
+`min_version: 2026.10.0` precisely so this fails fast rather than producing
 strange firmware.
 
 **Build picks up the wrong version of the filter component**
@@ -18,8 +19,10 @@ The per-build-host clone under `.esphome/external_components/` is stale.
 `refresh:` does not always suffice — delete `.esphome/external_components/<hash>`
 and rebuild. This has genuinely served a build the wrong code before.
 
-**`bluetooth_proxy: Unknown key allow_findmy`** (or any newer filter option)
-The build resolved the *stock* component, or an older fork tag. Check that
+**`bluetooth_proxy: Unknown key allow_findmy`** (or any other filter option)
+The filter options moved to `ble_advert_filter:` with ESPHome 2026.10; a config
+still putting them under `bluetooth_proxy:` gets this. Under `ble_advert_filter:`,
+the same error means the build resolved an older tag. Check that
 `ble-proxy.yaml`'s `external_components` block is intact and that the `ref:` tag
 actually contains the option. If you switched to `type: local`, the local
 fallback copy may lag the pinned tag.

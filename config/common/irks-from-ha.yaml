@@ -4,7 +4,7 @@
 # Without this, the IRK list is compile-time: a new phone means editing
 # secrets.yaml and reflashing every proxy. With it, each proxy subscribes to one
 # Home Assistant entity and reloads its keys whenever that entity changes. No
-# reflash, no reboot. Needs bluetooth_proxy fork v1.6.0+ (set_irks()).
+# reflash, no reboot. Uses ble_advert_filter's set_irks().
 #
 # HOME ASSISTANT SIDE — see docs/irks-from-ha.md for the full snippet. In short,
 # a template sensor whose `irks` ATTRIBUTE holds the list, with a name next to

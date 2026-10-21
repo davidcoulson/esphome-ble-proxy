@@ -8,7 +8,8 @@
 # every variant of it. CI calls this; so can you, to reproduce a build locally.
 #
 # Main-config keys beat package keys in ESPHome, so the variant's
-# bluetooth_proxy: block overrides whatever config/adopt/<board>.yaml set.
+# bluetooth_proxy: and ble_advert_filter: blocks override whatever
+# config/adopt/<board>.yaml set.
 set -euo pipefail
 board="${1:?usage: compose.sh <board> <variant>}"
 variant="${2:?usage: compose.sh <board> <variant>}"

@@ -23,9 +23,8 @@ concurrency:
 
 env:
   # Pinned deliberately, matching `min_version` in config/adopt/proxy-core.yaml
-  # and the version the fleet runs. Bump both together — and re-sync the
-  # bluetooth_proxy fork when you do (docs/upgrading.md).
-  ESPHOME_VERSION: "2026.9.0"
+  # and the version the fleet runs. Bump both together (docs/upgrading.md).
+  ESPHOME_VERSION: "2026.10.0"
 
 jobs:
   # Every board is compiled on every deploy. The deploy job publishes the whole

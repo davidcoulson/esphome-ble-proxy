@@ -27,7 +27,7 @@ esphome:
   name: ${name}
   friendly_name: ${friendly_name}
   name_add_mac_suffix: true
-  min_version: 2026.9.0
+  min_version: 2026.10.0
   project:
     name: dcoulson.ble-proxy
     version: "1.0.0"
@@ -104,13 +104,13 @@ text_sensor:
     name: "ESPHome Version"
     entity_category: diagnostic
 
-# >> RE-SYNC THIS FORK ON EVERY ESPHOME VERSION BUMP. <<
+# Advertisement filtering, plugged into stock bluetooth_proxy (ESPHome 2026.10+).
 external_components:
   - source:
       type: git
-      url: https://github.com/davidcoulson/esphome-bluetooth-proxy-filter
-      ref: v1.7.0
-    components: [bluetooth_proxy]
+      url: https://github.com/davidcoulson/esphome-ble-advert-filter
+      ref: v2.0.3
+    components: [ble_advert_filter]
     refresh: 1min
 
 esp32_ble:
@@ -130,8 +130,12 @@ esp32_ble_tracker:
     window: 120ms   # 37.5% duty — see the scan profile select below
 
 bluetooth_proxy:
-  id: ble_proxy
+  id: ble_proxy_core
   active: true
+
+# Every filter option lives here. It has the ble_proxy id the lambdas call.
+ble_advert_filter:
+  id: ble_proxy
   # Compile-time fallback; the "BLE RSSI Threshold" number restores on boot and
   # overwrites it, so this is tunable from Home Assistant without reflashing.
   rssi_threshold: -75
@@ -232,7 +236,7 @@ sensor:
     name: "Internal Temperature"
     entity_category: diagnostic
 
-  # Free-running uint32 counters in the fork; these report the delta since the
+  # Free-running uint32 counters in ble_advert_filter; these report the delta since the
   # last update so they graph as a rate. Unsigned subtraction stays correct
   # across the rollover, so nothing needs resetting.
   - platform: template

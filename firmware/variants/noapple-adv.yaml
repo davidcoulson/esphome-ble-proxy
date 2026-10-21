@@ -19,6 +19,9 @@ bluetooth_proxy:
   # Pick a connecting variant unless every BLE device you care about is a pure
   # broadcaster.
   active: false
+
+# Filter options go to ble_advert_filter (id ble_proxy, in proxy-core.yaml).
+ble_advert_filter:
   manufacturer_blocklist:
     - 0x004C  # Apple
   # HomeKit accessories advertise under Apple's company id with subtype 0x06,

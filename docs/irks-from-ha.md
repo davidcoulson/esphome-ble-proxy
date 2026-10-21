@@ -4,7 +4,7 @@ Every proxy subscribes to one Home Assistant entity and reloads its IRK list
 whenever that entity changes. A new phone becomes an edit in HA: no reflash and
 no reboot, and every proxy picks it up within a second.
 
-Needs the `bluetooth_proxy` fork **v1.6.0+** (`set_irks()`). The ESPHome side is
+Uses `ble_advert_filter`'s `set_irks()`. The ESPHome side is
 `config/common/irks-from-ha.yaml`, which is already included by
 `common/ble-proxy.yaml` and by the quick-flash firmware.
 
