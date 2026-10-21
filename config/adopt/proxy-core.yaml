@@ -109,7 +109,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/davidcoulson/esphome-ble-advert-filter
-      ref: v2.0.3
+      ref: v2.0.4
     components: [ble_advert_filter]
     refresh: 1min
 
@@ -199,12 +199,26 @@ switch:
       - lambda: 'id(ble_tracker).set_scan_active(true);'
       - esp32_ble_tracker.stop_scan:
       - delay: 200ms
-      - esp32_ble_tracker.start_scan: {continuous: true}
+      # Not while the profile is Disabled, and not with no HA to hear it.
+      - if:
+          condition:
+            and:
+              - api.connected:
+              - lambda: 'return id(sel_ble_scan_profile).current_option() != "Disabled";'
+          then:
+            - esp32_ble_tracker.start_scan: {continuous: true}
     turn_off_action:
       - lambda: 'id(ble_tracker).set_scan_active(false);'
       - esp32_ble_tracker.stop_scan:
       - delay: 200ms
-      - esp32_ble_tracker.start_scan: {continuous: true}
+      # Not while the profile is Disabled, and not with no HA to hear it.
+      - if:
+          condition:
+            and:
+              - api.connected:
+              - lambda: 'return id(sel_ble_scan_profile).current_option() != "Disabled";'
+          then:
+            - esp32_ble_tracker.start_scan: {continuous: true}
 
 number:
   - platform: template
@@ -329,13 +343,17 @@ select:
             # Actually stop the radio. A tiny window still scans and forwards.
             - esp32_ble_tracker.stop_scan:
           else:
-            # The setters only take effect when a scan next starts, and
-            # start_scan_() early-returns unless the scanner is IDLE, so this
-            # only fires when coming back from "Disabled".
+            # Profiles force passive, so the onboarding switch must read off.
+            - switch.template.publish:
+                id: sw_ble_active_scan
+                state: false
+            # The setters above only take effect when a scan starts, so restart
+            # a running one to apply the new interval/window now. At boot, api's
+            # on_client_connected starts the first scan.
             - if:
                 condition:
-                  and:
-                    - api.connected:  # at boot, api's on_client_connected starts the first scan
-                    - lambda: 'return !id(ble_tracker).scan_running();'
+                  api.connected:
                 then:
+                  - esp32_ble_tracker.stop_scan:
+                  - delay: 200ms
                   - esp32_ble_tracker.start_scan: {continuous: true}

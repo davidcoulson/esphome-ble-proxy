@@ -68,6 +68,14 @@ esphome:
             }
             id(ble_proxy).set_irks(hex);
 
+# The homeassistant text_sensor logs "Got attribute state '<value>'" at DEBUG, which
+# would put every IRK in the device logs. WARN, not INFO: ESPHome rejects a per-tag
+# level less severe than the global one, and some configs set the global level to WARN.
+logger:
+  logs:
+    homeassistant.text_sensor: WARN
+    text_sensor: WARN
+
 text_sensor:
   - platform: homeassistant
     id: ha_irks

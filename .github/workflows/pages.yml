@@ -57,6 +57,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check adoption targets
+        run: firmware/check.sh
+
       - name: Compose config
         run: firmware/compose.sh ${{ matrix.slug }} ${{ matrix.variant }} > firmware/_build.yaml
 
