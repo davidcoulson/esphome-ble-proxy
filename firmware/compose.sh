@@ -10,6 +10,10 @@
 # Main-config keys beat package keys in ESPHome, so the variant's
 # bluetooth_proxy: and ble_advert_filter: blocks override whatever
 # config/adopt/<board>.yaml set.
+#
+# A non-standard variant also overrides dashboard_import to point at
+# config/adopt/variants/<board>--<variant>.yaml, so adopting the device keeps the
+# variant. Those files are generated and checked by check.sh.
 set -euo pipefail
 board="${1:?usage: compose.sh <board> <variant>}"
 variant="${2:?usage: compose.sh <board> <variant>}"
@@ -27,3 +31,10 @@ packages:
 
 EOF
 cat "$here/variants/$variant.yaml"
+if [[ "$variant" != standard ]]; then
+cat <<EOF
+
+dashboard_import:
+  package_import_url: github://davidcoulson/esphome-ble-proxy/config/adopt/variants/$board--$variant.yaml@main
+EOF
+fi

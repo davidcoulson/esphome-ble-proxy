@@ -10,6 +10,8 @@ deploy and published to GitHub Pages.
 <board>.yaml        the adoption package + dashboard_import. One per board.
 variants/*.yaml     a bluetooth_proxy: override block. One per build variant.
 compose.sh          board x variant -> a buildable config
+check.sh            every board x variant has an import target that keeps the variant
+                    (config/adopt/variants/ is generated: check.sh --write)
 ```
 
 `compose.sh` exists so a board is described once. Main-config keys beat package
@@ -58,6 +60,7 @@ are published to different paths rather than named differently.
    it doubles as the `dashboard_import` target, and whoever adopts the device
    will not have your `!secret` keys.
 2. `firmware/<slug>.yaml` — that package plus `dashboard_import`.
+   Then run `firmware/check.sh --write` for the per-variant adoption files.
 3. Add the slug to `matrix.slug` in `.github/workflows/pages.yml`.
 4. Add a `BOARDS` entry in `wizard/index.html` with `fw`/`short`/`sub`, and list
    its key in `QUICK_ORDER`.
