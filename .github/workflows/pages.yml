@@ -7,6 +7,8 @@ on:
       - 'wizard/**'
       - 'firmware/**'
       - 'config/adopt/**'
+      # proxy-core.yaml includes it, so the published firmware does too.
+      - 'config/common/irks-from-ha.yaml'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 

@@ -35,7 +35,7 @@ substitutions:
   irk_attribute: irks
 
 globals:
-  # Last good list, persisted to NVS. [0] = key count, then up to 16 keys of
+  # Last good list, persisted to NVS. [0] = key count (0xFF = cleared), then up to 16 keys of
   # 16 bytes. Stored as raw bytes, not hex: a restored std::string global is
   # capped at 254 bytes, and eight keys in hex are already 256.
   - id: g_irk_store
@@ -55,6 +55,10 @@ esphome:
         - lambda: |-
             const auto &s = id(g_irk_store);
             const uint8_t n = s[0];
+            if (n == 0xFF) {  // HA said `clear`: stay empty, don't fall back to the compiled list
+              id(ble_proxy).clear_irks();
+              return;
+            }
             if (n == 0 || n > 16) return;  // nothing saved yet (or garbage): keep compile-time list
             std::string hex;
             hex.reserve(n * 33);
@@ -84,8 +88,12 @@ text_sensor:
           // attribute on every reconnect; writing flash each time would wear it.
           const auto &live = id(ble_proxy).get_irks();
           const uint8_t n = live.size() > 16 ? 16 : live.size();
+          if (live.size() > 16)
+            ESP_LOGW("irks", "%u IRKs loaded but only 16 fit in flash; the rest are lost on a reboot without HA",
+                     (unsigned) live.size());
           std::array<uint8_t, 257> next{};
-          next[0] = n;
+          // 0xFF marks a deliberate `clear`, which 0 ("nothing saved yet") cannot.
+          next[0] = n == 0 ? 0xFF : n;
           for (uint8_t k = 0; k < n; k++)
             memcpy(&next[1 + k * 16], live[k].data(), 16);
           if (next != s) s = next;

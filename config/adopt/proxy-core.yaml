@@ -295,28 +295,32 @@ select:
     restore_value: true
     initial_option: "Balanced"
     options: ["Insane", "Aggressive", "Balanced", "Disabled"]
-    set_action:
+    # on_value, NOT set_action. set_action fires BEFORE the new option is
+    # published, so current_option() inside it is still the old one: every
+    # change applied the previous choice. And setup() restores the saved option
+    # with publish_state(), which runs on_value but never set_action, so a
+    # restored profile left the YAML scan_parameters in force. x is the new option.
+    on_value:
       - lambda: |-
           // UNITS: these setters take raw BLE controller units of 0.625ms, NOT
           // milliseconds. scan_parameters above IS in ms and is converted at
           // codegen; a literal here is not. ms / 0.625 = units.
-          auto opt = id(sel_ble_scan_profile).current_option();
-          if (opt == "Insane") {
+          if (x == "Insane") {
             id(ble_tracker).set_scan_interval(1760);  // 1100ms
             id(ble_tracker).set_scan_window(1760);    // 1100ms -> 100%
             id(ble_tracker).set_scan_active(false);
-          } else if (opt == "Aggressive") {
+          } else if (x == "Aggressive") {
             id(ble_tracker).set_scan_interval(512);   // 320ms
             id(ble_tracker).set_scan_window(480);     // 300ms -> 94%
             id(ble_tracker).set_scan_active(false);
-          } else if (opt == "Balanced") {
+          } else if (x == "Balanced") {
             id(ble_tracker).set_scan_interval(512);   // 320ms
             id(ble_tracker).set_scan_window(192);     // 120ms -> 37.5%
             id(ble_tracker).set_scan_active(false);
           }
       - if:
           condition:
-            lambda: 'return id(sel_ble_scan_profile).current_option() == "Disabled";'
+            lambda: 'return x == "Disabled";'
           then:
             # Actually stop the radio. A tiny window still scans and forwards.
             - esp32_ble_tracker.stop_scan:
@@ -326,6 +330,8 @@ select:
             # only fires when coming back from "Disabled".
             - if:
                 condition:
-                  lambda: 'return !id(ble_tracker).scan_running();'
+                  and:
+                    - api.connected:  # at boot, api's on_client_connected starts the first scan
+                    - lambda: 'return !id(ble_tracker).scan_running();'
                 then:
                   - esp32_ble_tracker.start_scan: {continuous: true}
