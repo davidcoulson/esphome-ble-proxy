@@ -1135,7 +1135,9 @@ function genFleet(c){
   var ov = [];
   if (c.rssi !== -75)  ov.push("  rssi_threshold: "+c.rssi);
   if (c.floor !== -90) ov.push("  rssi_floor: "+c.floor);
-  if (!c.apple)        ov.push("  manufacturer_blocklist: []   # Apple filtering off for this node");
+  // !remove, not []: lists from a package are concatenated, so [] would leave the Apple entry.
+  if (!c.apple)        ov.push("  manufacturer_blocklist: !remove   # Apple filtering off for this node");
+  else if (!c.findmy)  ov.push("  allow_findmy: false");
   if (!c.nonres)       ov.push("  drop_non_resolvable: false");
   if (c.macs.length){
     ov.push("  mac_allowlist:");
@@ -1147,6 +1149,23 @@ function genFleet(c){
     L.push("# comes from the shared package — change it there to change the whole fleet.");
     L.push("ble_advert_filter:");
     L.push(ov.join("\n"));
+  }
+  /* The threshold number restores/publishes on boot and overwrites the filter's
+     rssi_threshold, and its min_value is fixed at -90, so both follow the choices here. */
+  var nv = [];
+  if (c.rssi !== -75)  nv.push("    initial_value: "+c.rssi);
+  if (c.floor !== -90) nv.push("    min_value: "+c.floor);
+  if (nv.length){
+    L.push("");
+    L.push("number:");
+    L.push("  - id: !extend num_ble_rssi_threshold");
+    L.push(nv.join("\n"));
+  }
+  if (c.profile !== "Balanced"){
+    L.push("");
+    L.push("select:");
+    L.push("  - id: !extend sel_ble_scan_profile");
+    L.push("    initial_option: \""+c.profile+"\"");
   }
   L.push("");
   return L.join("\n");
@@ -1236,7 +1255,7 @@ function genNext(c){
   if (c.apple && !c.findmy)
     notes.push(["","AirTags and FindMy tags will be dropped.","They advertise under Apple's company id, so the "+
       "blocklist takes them. Tick \"keep AirTags\" if you track any."]);
-  if (c.calib && (mode === "standalone" || c.uuid))
+  if (mode === "standalone" ? c.calib : c.uuid)
     notes.push(["","Use this beacon UUID on every proxy you own.","<code>"+esc(c.uuid)+"</code> scopes the rule that lets "+
       "your proxies hear each other's calibration beacons. A proxy with a different one is invisible to the rest. This "+
       "browser remembers it for the next config you generate; write it down if you'll use another."]);
@@ -1262,7 +1281,9 @@ function render(){
   $("bandwrap").hidden = !b.band;
   $("irkwrap").hidden = !c.irk;
   $("findmyWrap").hidden = !$("fApple").checked;
-  $("uuidwrap").hidden = !$("calib").checked;
+  $("uuidwrap").hidden = !$("calib").checked && mode !== "fleet";
+  // The shared package fixes these; hiding beats a checkbox that does nothing.
+  ["fTile","fPair","calib"].forEach(function(id){ $(id).closest("label").hidden = mode === "fleet"; });
   var typed = ($("beaconUuid").value || "").trim();
   $("uuidhint").innerHTML = (typed && !UUID_RE.test(typed))
     ? "<span style='color:var(--warn)'>Not a UUID (8-4-4-4-12 hex digits).</span> " + (mode === "standalone" ? "Falling back to none — the rule is left out until this is fixed." : "Ignored; the package's own is used.")
