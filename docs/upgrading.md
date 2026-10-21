@@ -35,7 +35,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/davidcoulson/esphome-ble-advert-filter
-      ref: v2.0.3       # <- here
+      ref: v2.0.4       # <- here
     components: [ble_advert_filter]
     refresh: 1min
 ```

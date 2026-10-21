@@ -91,7 +91,7 @@ external_components:
       # hook, plus two fixes: a truncated or malformed iBeacon no longer earns Apple data
       # the blocklist exemption, and the service-UUID counter only counts
       # adverts that are actually forwarded.
-      ref: v2.0.3
+      ref: v2.0.4
     components: [ble_advert_filter]
     # Kept at 1min despite the pin: the cached clone under
     # .esphome/external_components/ is keyed per build host, and a stale one
