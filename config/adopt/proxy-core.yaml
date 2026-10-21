@@ -27,7 +27,7 @@ esphome:
   name: ${name}
   friendly_name: ${friendly_name}
   name_add_mac_suffix: true
-  min_version: 2026.9.0
+  min_version: 2026.10.0
   project:
     name: dcoulson.ble-proxy
     version: "1.0.0"
@@ -104,13 +104,13 @@ text_sensor:
     name: "ESPHome Version"
     entity_category: diagnostic
 
-# >> RE-SYNC THIS FORK ON EVERY ESPHOME VERSION BUMP. <<
+# Advertisement filtering, plugged into stock bluetooth_proxy (ESPHome 2026.10+).
 external_components:
   - source:
       type: git
-      url: https://github.com/davidcoulson/esphome-bluetooth-proxy-filter
-      ref: v1.7.0
-    components: [bluetooth_proxy]
+      url: https://github.com/davidcoulson/esphome-ble-advert-filter
+      ref: v2.0.3
+    components: [ble_advert_filter]
     refresh: 1min
 
 esp32_ble:
@@ -130,8 +130,12 @@ esp32_ble_tracker:
     window: 120ms   # 37.5% duty — see the scan profile select below
 
 bluetooth_proxy:
-  id: ble_proxy
+  id: ble_proxy_core
   active: true
+
+# Every filter option lives here. It has the ble_proxy id the lambdas call.
+ble_advert_filter:
+  id: ble_proxy
   # Compile-time fallback; the "BLE RSSI Threshold" number restores on boot and
   # overwrites it, so this is tunable from Home Assistant without reflashing.
   rssi_threshold: -75
@@ -232,7 +236,7 @@ sensor:
     name: "Internal Temperature"
     entity_category: diagnostic
 
-  # Free-running uint32 counters in the fork; these report the delta since the
+  # Free-running uint32 counters in ble_advert_filter; these report the delta since the
   # last update so they graph as a rate. Unsigned subtraction stays correct
   # across the rollover, so nothing needs resetting.
   - platform: template
@@ -295,28 +299,32 @@ select:
     restore_value: true
     initial_option: "Balanced"
     options: ["Insane", "Aggressive", "Balanced", "Disabled"]
-    set_action:
+    # on_value, NOT set_action. set_action fires BEFORE the new option is
+    # published, so current_option() inside it is still the old one: every
+    # change applied the previous choice. And setup() restores the saved option
+    # with publish_state(), which runs on_value but never set_action, so a
+    # restored profile left the YAML scan_parameters in force. x is the new option.
+    on_value:
       - lambda: |-
           // UNITS: these setters take raw BLE controller units of 0.625ms, NOT
           // milliseconds. scan_parameters above IS in ms and is converted at
           // codegen; a literal here is not. ms / 0.625 = units.
-          auto opt = id(sel_ble_scan_profile).current_option();
-          if (opt == "Insane") {
+          if (x == "Insane") {
             id(ble_tracker).set_scan_interval(1760);  // 1100ms
             id(ble_tracker).set_scan_window(1760);    // 1100ms -> 100%
             id(ble_tracker).set_scan_active(false);
-          } else if (opt == "Aggressive") {
+          } else if (x == "Aggressive") {
             id(ble_tracker).set_scan_interval(512);   // 320ms
             id(ble_tracker).set_scan_window(480);     // 300ms -> 94%
             id(ble_tracker).set_scan_active(false);
-          } else if (opt == "Balanced") {
+          } else if (x == "Balanced") {
             id(ble_tracker).set_scan_interval(512);   // 320ms
             id(ble_tracker).set_scan_window(192);     // 120ms -> 37.5%
             id(ble_tracker).set_scan_active(false);
           }
       - if:
           condition:
-            lambda: 'return id(sel_ble_scan_profile).current_option() == "Disabled";'
+            lambda: 'return x == "Disabled";'
           then:
             # Actually stop the radio. A tiny window still scans and forwards.
             - esp32_ble_tracker.stop_scan:
@@ -326,6 +334,8 @@ select:
             # only fires when coming back from "Disabled".
             - if:
                 condition:
-                  lambda: 'return !id(ble_tracker).scan_running();'
+                  and:
+                    - api.connected:  # at boot, api's on_client_connected starts the first scan
+                    - lambda: 'return !id(ble_tracker).scan_running();'
                 then:
                   - esp32_ble_tracker.start_scan: {continuous: true}

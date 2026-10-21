@@ -24,8 +24,9 @@ asks you six questions and writes steps 2 and 3 for you.
   ESP32-C3 / C6 / ESP8685 / classic ESP32. See [docs/hardware.md](docs/hardware.md)
   for why the order matters — short version, WiFi and BLE share one radio on the
   cheap boards.
-- ESPHome (the Home Assistant add-on, or the CLI). **2026.9.0 or newer** — the
-  packages use keys that do not exist before it.
+- ESPHome (the Home Assistant add-on, or the CLI). **2026.10.0 or newer** — the
+  filter needs its `bluetooth_proxy` hook, and the packages use keys that do not
+  exist before it.
 - A USB cable for the first flash. Every flash after that is over the air.
 
 ## 1. Get the files onto your ESPHome box
@@ -99,7 +100,7 @@ First build takes a while — it compiles ESP-IDF. Later builds are minutes.
 
 > **If it fails to build** on the version pin, see
 > [docs/troubleshooting.md](docs/troubleshooting.md). The most common cause is
-> an ESPHome older than 2026.9.0.
+> an ESPHome older than 2026.10.0.
 
 ## 5. Adopt it in Home Assistant
 

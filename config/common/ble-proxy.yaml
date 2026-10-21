@@ -2,10 +2,11 @@
 # BLE proxy package - shared by every rrn00 / s2224 / cf-sw1 / shelly / S3 / ETH
 # proxy. Changed 2026-09-11 to cut BLE network noise. Four things to know:
 #
-# 1. FORKED bluetooth_proxy COMPONENT (external_components below)
+# 1. ble_advert_filter COMPONENT (external_components below)
 #    Core ESPHome's bluetooth_proxy forwards EVERY advertisement it hears - it
-#    has no RSSI, MAC or name filtering of any kind. We run a local fork of it
-#    (components/bluetooth_proxy/, synced to tag 2026.9.0) that adds:
+#    has no RSSI, MAC or name filtering of its own. Since 2026.10 it has a hook
+#    for a filter, and ble_advert_filter plugs into it (until then this was a
+#    fork of bluetooth_proxy, esphome-bluetooth-proxy-filter). It adds:
 #      rssi_threshold  - drop anything weaker than N dBm
 #      irks            - drop Resolvable Private Addresses that resolve to none
 #                        of our own phones/watches (i.e. other people's devices)
@@ -13,7 +14,8 @@
 #      allow_espressif - exempt Espressif OUIs from the IRK test
 #    Measured effect: ~38% fewer bytes from the RSSI filter alone, and 56-66%
 #    of all advertisements dropped once IRK filtering is on.
-#    >> RE-SYNC THE FORK ON EVERY ESPHOME VERSION BUMP. See its README.md. <<
+#    The filter has the id ble_proxy, which the lambdas here use; stock
+#    bluetooth_proxy is ble_proxy_core.
 #
 # 2. api: batch_delay DOES NOTHING FOR BLE TRAFFIC
 #    The advertisement flush calls send_message() directly and bypasses the
@@ -43,7 +45,7 @@
 # same-day revision counter - without it a second edit on the same date would
 # produce an identical version and devices would look up to date when they are not.
 substitutions:
-  ble_proxy_version: "2026.09.19.2"
+  ble_proxy_version: "2026.10.21.0"
   # The proximity UUID our probes beacon with AND the one the allow_ibeacon rule
   # below is scoped to. Defined once so the two cannot drift apart: a mismatch
   # would silently empty the BPS calibration matrix.
@@ -55,7 +57,7 @@ packages:
   # attribute `irks`, defined in /config/packages/ble_proxy_irks.yaml). Adding or
   # replacing a phone is an edit to ble_proxy_irks in HA's secrets.yaml, not a
   # reflash of every proxy. The irks: list further down is now only the
-  # first-boot seed. Needs fork v1.6.0+ for set_irks(). See irks-from-ha.yaml.
+  # first-boot seed. See irks-from-ha.yaml.
   irks_from_ha: !include irks-from-ha.yaml
 
 esp32:
@@ -70,57 +72,27 @@ logger:
   baud_rate: 0  # 0 Enables logging, but disables serial-port logging to free CPU and memory
 
 external_components:
-  # Fork of core bluetooth_proxy (synced to ESPHome 2026.9.0) adding on-device
-  # advertisement filtering - see the header comment above for why.
+  # On-device advertisement filtering, plugged into stock bluetooth_proxy's
+  # filter hook (ESPHome 2026.10+) - see the header comment above for why.
   #
-  # Sourced from git rather than the local components/ dir SO THAT REMOTE BUILD
+  # Sourced from git rather than a local components/ dir SO THAT REMOTE BUILD
   # SERVERS CAN RESOLVE IT: a `type: local` path only exists on this HA box, so
   # any build offloaded to a paired builder would fail to find the component.
   # Each builder clones it itself.
-  #
-  # >> RE-SYNC THE FORK ON EVERY ESPHOME VERSION BUMP <<
-  # It pins a copy of a fast-moving core component. Procedure and the exact diff
-  # vs upstream are in the repo's components/bluetooth_proxy/README.md.
-  # THE REPO IS THE SINGLE SOURCE OF TRUTH - component edits need a git push,
-  # and the cached clone under .esphome/external_components/ may need deleting
-  # for a build to pick them up (refresh: does not always suffice).
-  # /config/esphome/components/bluetooth_proxy is only an offline fallback;
-  # re-sync it from the repo if you ever switch back to `type: local`.
   - source:
       type: git
-      url: https://github.com/davidcoulson/esphome-bluetooth-proxy-filter
+      url: https://github.com/davidcoulson/esphome-ble-advert-filter
       # PINNED to a tag. `ref: main` meant every build picked up whatever was on
       # the default branch at that moment, so two devices flashed an hour apart
       # could be running different filter code with no way to tell from the
       # version string. Bump this deliberately when adopting a new release.
       #
-      # v1.4.0 = re-synced against ESPHome 2026.9.0 (2026-09-16). Upstream
-      # bluetooth_proxy changed by one Python type annotation between 2026.8.2
-      # and 2026.9.0 and the C++ not at all, so v1.4.0 compiles to exactly the
-      # same code as v1.3.2. ble_proxy_version was therefore NOT bumped: no
-      # proxy needs reflashing for this, and a bump would have forced ~70
-      # byte-identical OTAs.
-      #
-      # v1.5.1 = allow_findmy also exempts AirPods proximity-pairing adverts
-      # (Apple subtype 0x07). AirPods near their owner send that instead of
-      # Offline Finding 0x12, from the same rotated address, and v1.5.0 dropped
-      # it - so a case on a desk was heard by one blocklist-free receiver and
-      # nothing else. This one DOES change the C++, hence the version bump.
-      #
-      # v1.6.0 = set_irks(): the IRK list can be replaced at runtime, which is
-      # what irks-from-ha.yaml uses. Built on v1.5.1, nothing else changed.
-      #
-      # v1.7.0 = review fixes + uuid-scoped iBeacon rules. BEHAVIOUR CHANGES:
-      #  - allow_ibeacon rules can name a uuid (used below);
-      #  - an RPA matching no IRK is now dropped AFTER the iBeacon / FindMy /
-      #    service-UUID rules have had a look, so service_uuid_allowlist can
-      #    rescue a device pairing from a resolvable address, as documented;
-      #  - only type-1 (random) addresses are classed as RPA / non-resolvable,
-      #    so a BONDED device reported by its public identity address is no
-      #    longer dropped by drop_non_resolvable;
-      #  - the pre-gate follows runtime changes to the RSSI threshold number.
-      ref: v1.7.0
-    components: [bluetooth_proxy]
+      # v2.0.3 = the filter from the old fork's v1.7.0, moved onto the 2026.10
+      # hook, plus two fixes: a truncated or malformed iBeacon no longer earns Apple data
+      # the blocklist exemption, and the service-UUID counter only counts
+      # adverts that are actually forwarded.
+      ref: v2.0.3
+    components: [ble_advert_filter]
     # Kept at 1min despite the pin: the cached clone under
     # .esphome/external_components/ is keyed per build host, and a stale one
     # has already served a build the wrong code once. A tag is immutable, so
@@ -213,13 +185,20 @@ esp32_ble_tracker:
     # required if your device is controlling other sensors or doing PWM for lights etc.
 
 bluetooth_proxy:
-  id: ble_proxy
+  # Stock proxy. Only active, cache_services and connection_slots belong here;
+  # every filter option is under ble_advert_filter below, which owns the
+  # ble_proxy id the lambdas in this package call.
+  id: ble_proxy_core
   active: true
+
+ble_advert_filter:
+  id: ble_proxy
   # Compile-time fallback only. The "BLE RSSI Threshold" number below restores
   # on boot and overwrites this, so tune it there rather than reflashing.
   rssi_threshold: -80
-  # Absolute reception limit, applied to EVERY advertisement before anything is
-  # categorised - mac_allowlist entries included. The allowlist deliberately
+  # Absolute reception limit for every category, mac_allowlist entries included.
+  # The one exception is an allow_ibeacon / allow_findmy rule with its own rssi
+  # (the -95 probe rule below), which replaces it. The allowlist deliberately
   # exempts the tracked tags from rssi_threshold, because a weak reading here is
   # exactly what places a tag nearer another proxy, but that exemption used to be
   # unbounded: a tag heard down at the receiver noise limit was still forwarded,
@@ -344,7 +323,7 @@ bluetooth_proxy:
   #
   # Improv Wi-Fi - an unprovisioned ESP advertises from its PUBLIC Espressif
   #   address, so the address-type tests never touch it. Its only exposure is
-  #   the -85 dBm RSSI threshold, which drops a far-away board. Note
+  #   the service-UUID RSSI limit (rssi_service_uuid below), which drops a far-away board. Note
   #   allow_espressif does NOT rescue it: that flag is consulted only in the
   #   unresolved-RPA test, never in the RSSI check.
   #
@@ -375,7 +354,7 @@ bluetooth_proxy:
                                                # the old and new address, which
                                                # needs >=2 proxies to hear both.
   # RSSI limit for the service_uuid_allowlist category. Left unset it inherits
-  # rssi_threshold (-80 at runtime), which drops a Tile one room away. Bound it
+  # rssi_threshold (the threshold dial, -75 by default), which drops a Tile one room away. Bound it
   # by the floor instead, same reasoning as mac_allowlist: a weak Tile reading
   # here is exactly what places it nearer another proxy. Matter/Improv/DFU share
   # the limit; they are rare, low-volume adverts so that costs nothing.
@@ -467,7 +446,7 @@ number:
       - lambda: 'id(ble_proxy).set_rssi_threshold((int8_t) x);'
 
 sensor:
-  # Advertisement accounting from the forked bluetooth_proxy, so the effect of
+  # Advertisement accounting from ble_advert_filter, so the effect of
   # the threshold is measurable per-proxy instead of guessed. The C++ counters
   # are free-running totals; these report the delta since the last update so
   # they graph as a rate. Unsigned subtraction stays correct across the uint32
@@ -504,9 +483,6 @@ sensor:
       last = now;
       return (float) delta;
 
-  # Subset of "Dropped": RPAs that resolved to none of our IRKs, i.e. other
-  # people's phones and watches. Separated out because it answers a different
-  # question than the RSSI drops - how much of the noise is untrackable.
   # Adverts forwarded ONLY because they matched service_uuid_allowlist, i.e.
   # they would have been dropped otherwise. Sits at zero while nothing is
   # pairing, so any movement is direct evidence the passthrough fired - which is
@@ -527,6 +503,9 @@ sensor:
       last = now;
       return (float) delta;
 
+  # Subset of "Dropped": RPAs that resolved to none of our IRKs, i.e. other
+  # people's phones and watches. Separated out because it answers a different
+  # question than the RSSI drops - how much of the noise is untrackable.
   - platform: template
     name: "BLE RPAs Dropped"
     id: sens_ble_rpa_dropped
@@ -580,22 +559,26 @@ select:
       - "Aggressive"
       - "Balanced"
       - "Disabled"
-    set_action:
+    # on_value, NOT set_action. set_action fires BEFORE the new option is
+    # published, so current_option() inside it is still the old one: every
+    # change applied the previous choice. And setup() restores the saved option
+    # with publish_state(), which runs on_value but never set_action, so a
+    # restored profile left the YAML scan_parameters in force. x is the new option.
+    on_value:
       - lambda: |-
           // NOTE ON UNITS: these setters take raw BLE controller units of
           // 0.625ms, NOT milliseconds. The YAML scan_parameters above are in ms
           // and get converted by to_ble_units() during codegen; a literal here
           // does not. So 320 would be 200ms, not 320ms. ms / 0.625 = units.
-          auto opt = id(sel_ble_scan_profile).current_option();
-          if (opt == "Insane") {
+          if (x == "Insane") {
             id(ble_tracker).set_scan_interval(1760);  // 1100ms
             id(ble_tracker).set_scan_window(1760);    // 1100ms -> 100%
             id(ble_tracker).set_scan_active(false);  // passive - see scan_parameters
-          } else if (opt == "Aggressive") {
+          } else if (x == "Aggressive") {
             id(ble_tracker).set_scan_interval(512);   // 320ms
             id(ble_tracker).set_scan_window(480);     // 300ms -> 94%
             id(ble_tracker).set_scan_active(false);  // passive - see scan_parameters
-          } else if (opt == "Balanced") {
+          } else if (x == "Balanced") {
             // 37.5% duty, leaving most of the radio for WiFi on single-core
             // boards. This is the profile every WiFi proxy should run.
             id(ble_tracker).set_scan_interval(512);   // 320ms
@@ -606,7 +589,7 @@ select:
       # scanned and still forwarded. Actually stop the radio instead.
       - if:
           condition:
-            lambda: 'return id(sel_ble_scan_profile).current_option() == "Disabled";'
+            lambda: 'return x == "Disabled";'
           then:
             - esp32_ble_tracker.stop_scan:
           else:
@@ -615,7 +598,9 @@ select:
             # only fires when coming back from "Disabled".
             - if:
                 condition:
-                  lambda: 'return !id(ble_tracker).scan_running();'
+                  and:
+                    - api.connected:  # at boot, api's on_client_connected starts the first scan
+                    - lambda: 'return !id(ble_tracker).scan_running();'
                 then:
                   - esp32_ble_tracker.start_scan:
                       continuous: true

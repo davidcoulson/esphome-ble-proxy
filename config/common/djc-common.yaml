@@ -3,8 +3,9 @@
 esphome:
   name_add_mac_suffix: false
   # The packages use 2026.9-era keys (watchdog_timeout, assertion_level,
-  # cpu_frequency) and an IDF-6-only lambda; fail fast on an older builder.
-  min_version: 2026.9.0
+  # cpu_frequency), an IDF-6-only lambda and ble_advert_filter, which needs
+  # 2026.10's bluetooth_proxy filter hook; fail fast on an older builder.
+  min_version: 2026.10.0
 #  includes:
 #    - <esp_bootloader_desc.h>
 #  environment_variables:

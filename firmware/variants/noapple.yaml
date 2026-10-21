@@ -11,6 +11,9 @@
 # and tags can skip that step entirely.
 bluetooth_proxy:
   active: true
+
+# Filter options go to ble_advert_filter (id ble_proxy, in proxy-core.yaml).
+ble_advert_filter:
   manufacturer_blocklist:
     - 0x004C  # Apple
   # HomeKit accessories advertise under Apple's company id with subtype 0x06,

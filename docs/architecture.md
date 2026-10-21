@@ -20,8 +20,8 @@ device file            substitutions: mac, area, [module]
 
 | File | Role |
 |---|---|
-| `djc-common.yaml` | ESP32 baseline. ESP-IDF **pinned 6.1.0**, `min_version 2026.9.0`, 10 s task watchdog, logger WARN, `ota` (`id_ota`, partition access), `api` (`reboot_timeout: 0s`), mdns, web_server v2, safe_mode, restart / safe-mode / factory-reset buttons, uptime / internal-temperature / version sensors, Home Assistant as the only time source. |
-| `ble-proxy.yaml` | The whole proxy: the forked component, `esp32_ble_tracker`, `bluetooth_proxy` with its filter config, the iBeacon for BPS calibration, and the five diagnostic sensors + two tuning entities. **The one file worth reading in full.** |
+| `djc-common.yaml` | ESP32 baseline. ESP-IDF **pinned 6.1.0**, `min_version 2026.10.0`, 10 s task watchdog, logger WARN, `ota` (`id_ota`, partition access), `api` (`reboot_timeout: 0s`), mdns, web_server v2, safe_mode, restart / safe-mode / factory-reset buttons, uptime / internal-temperature / version sensors, Home Assistant as the only time source. |
+| `ble-proxy.yaml` | The whole proxy: `esp32_ble_tracker`, `bluetooth_proxy`, `ble_advert_filter` with its filter config, the iBeacon for BPS calibration, and the five diagnostic sensors + two tuning entities. **The one file worth reading in full.** |
 | `esp32-ble-platform.yaml` | Shared sdkconfig trim for the C3 / C5 / C6 proxy families. Variant-agnostic on purpose: the family sets `esp32.variant` / `flash_size` / `cpu_frequency`, this only tunes the framework. |
 | `wifi.yaml` | WiFi STA, WPA2 minimum, BTM/RRM on, 17 dB, no power save, 5 min `reboot_timeout`. RSSI as dB (internal) and %; MAC/BSSID internal. |
 | `eth.yaml` | W5500 SPI on the Waveshare ESP32-S3-ETH pinout, plus `ethernet_info` sensors. Boards with different wiring override the pins in their device file. |
@@ -95,9 +95,9 @@ every proxy without editing 70 files. **Bump it on any change to
 it a second edit on the same date produces an identical version, and devices
 look up to date when they are not.
 
-The one exception: if the fork's *compiled code* did not change (as between
-v1.3.2 and v1.4.0, where upstream moved one Python type annotation and nothing
-else), don't bump it. A bump would force ~70 byte-identical OTAs.
+The one exception: if the filter's *compiled code* did not change (as between
+fork v1.3.2 and v1.4.0, where upstream moved one Python type annotation and
+nothing else), don't bump it. A bump would force ~70 byte-identical OTAs.
 
 ### Reboot policy
 
@@ -164,7 +164,7 @@ Never `type: local`. Two reasons:
    the default branch at that moment — two devices flashed an hour apart could
    run different filter code with no way to tell from the version string.
 
-`refresh:` is kept short (1 min for the proxy fork, `always` for the watchdog)
+`refresh:` is kept short (1 min for the filter component, `always` for the watchdog)
 despite the pin, because the cached clone under `.esphome/external_components/`
 is keyed **per build host** and a stale one has already served a build the wrong
 code. A tag is immutable, so re-checking costs nothing and closes that hole.

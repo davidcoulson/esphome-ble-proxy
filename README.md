@@ -29,9 +29,10 @@ dense house that is a firehose of other people's AirPods.
 Measured effect: **~38% fewer bytes** from the RSSI filter alone, and **56–66%
 of all advertisements dropped** once IRK filtering is on.
 
-That filtering comes from a fork of the core component,
-[`esphome-bluetooth-proxy-filter`](https://github.com/davidcoulson/esphome-bluetooth-proxy-filter),
-pulled in by pinned tag. See [docs/filtering.md](docs/filtering.md) for the
+That filtering comes from
+[`esphome-ble-advert-filter`](https://github.com/davidcoulson/esphome-ble-advert-filter),
+which plugs into stock `bluetooth_proxy` (ESPHome 2026.10+) and is pulled in by
+pinned tag. See [docs/filtering.md](docs/filtering.md) for the
 filter chain in execution order and what every knob does.
 
 ## The fleet
@@ -92,13 +93,13 @@ config/
 firmware/          board configs, variants/, and compose.sh — CI builds board x variant
 docs/
   architecture.md  how the packages compose, and why it is layered this way
-  filtering.md     the fork: filter chain, every option, what to allowlist
+  filtering.md     the filter: chain, every option, what to allowlist
   tuning.md        RSSI thresholds, scan profiles, the radio-sharing problem
   hardware.md      boards, pinouts, what to buy
   operations.md    flashing, OTA at scale, safe mode, the watchdog
   troubleshooting.md  symptom → cause → fix
   home-assistant.md   Bermuda, BPS, private_ble_device, the entities you get
-  upgrading.md     the ESPHome bump runbook (re-sync the fork!)
+  upgrading.md     the ESPHome bump runbook
   irks-from-ha.md  change IRKs in Home Assistant instead of reflashing
 wizard/            the browser flasher + config generator, served by GitHub Pages
 ```
@@ -133,8 +134,8 @@ family override a shared default without forking it.
 - **External components are pinned by tag, sourced by git URL** — never
   `type: local`. A local path only exists on one box, and builds get offloaded
   to remote builders.
-- **Re-sync the fork on every ESPHome version bump.** It is a copy of a
-  fast-moving core component. See [docs/upgrading.md](docs/upgrading.md).
+- **Check the filter hook on every ESPHome version bump.** See
+  [docs/upgrading.md](docs/upgrading.md).
 - **Never mass-flash.** A fleet-wide OTA once put ~40 nodes into a reboot loop.
   Batch by family, a handful at a time. See [docs/operations.md](docs/operations.md).
 
@@ -150,8 +151,7 @@ the one difference to reconcile.
 
 ## Credits
 
-- [ESPHome](https://esphome.io) and its `bluetooth_proxy` component, which this
-  forks rather than replaces
+- [ESPHome](https://esphome.io) and its `bluetooth_proxy` component and filter hook
 - [Bermuda BLE Trilateration](https://github.com/agittins/bermuda)
 - [DerekSeaman/irk-capture](https://github.com/DerekSeaman/irk-capture) — the
   IRK capture component behind `common/irk-capture-base.yaml`

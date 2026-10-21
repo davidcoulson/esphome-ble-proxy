@@ -68,7 +68,7 @@ instantly and a 37.5% scan duty cycle is plenty.
 **Bermuda has no RSSI cutoff of its own.** `max_area_radius` is applied in Home
 Assistant *after* the packet has already crossed the network. The on-device
 threshold is the only thing that reduces actual traffic — which is the whole
-argument for the fork.
+argument for the on-device filter.
 
 **Set each proxy's `area`.** It comes from the `area:` substitution in the
 device file, so it is right by construction if you filled that in. Bermuda's
@@ -136,7 +136,7 @@ Details worth knowing before you change any of it:
   including your own probes — unless `allow_ibeacon` exempts them. Without it
   the calibration matrix comes back empty.
 - **Set your own `ble_beacon_uuid`, the same on every proxy you own.** The uuid
-  is what scopes the rule to *your* beacons (fork v1.7.0+). Before that the rule
+  is what scopes the rule to *your* beacons (since fork v1.7.0). Before that the rule
   was `major: 1` alone, and major 1 is the commonest vendor default there is —
   anybody's beacon left on its defaults was forwarded too, at the loose −95
   limit. `uuidgen` makes one; the [wizard](https://davidcoulson.github.io/esphome-ble-proxy/)

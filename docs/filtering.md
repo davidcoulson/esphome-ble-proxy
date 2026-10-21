@@ -6,15 +6,18 @@ has no RSSI, MAC or name filtering of any kind, and the `mac_address` /
 gate the proxy stream — they only apply to `on_ble_advertise` automation
 triggers.
 
-So this fleet runs a fork:
-[`davidcoulson/esphome-bluetooth-proxy-filter`](https://github.com/davidcoulson/esphome-bluetooth-proxy-filter),
-pinned by tag in `common/ble-proxy.yaml` (**v1.7.0**, synced to ESPHome
-2026.9.0). It adds filtering inside `on_raw_advertisement_()` — the only point
-at which a packet can be suppressed before it is queued for the API and crosses
-the network.
+So this fleet runs
+[`davidcoulson/esphome-ble-advert-filter`](https://github.com/davidcoulson/esphome-ble-advert-filter),
+pinned by tag in `common/ble-proxy.yaml` (**v2.0.3**). It plugs into stock
+`bluetooth_proxy`'s advertisement filter hook (ESPHome 2026.10+), which runs
+before a packet is queued for the API and crosses the network. The filter
+options live under `ble_advert_filter:` (id `ble_proxy`, which the lambdas
+use); stock `bluetooth_proxy` keeps `active` and `connection_slots` under the id
+`ble_proxy_core`. Before 2026.10 the same filter was a fork of `bluetooth_proxy`,
+[`esphome-bluetooth-proxy-filter`](https://github.com/davidcoulson/esphome-bluetooth-proxy-filter).
 
-With everything at its default the fork is **byte-for-byte equivalent to
-upstream**: every option defaults to off or −127 ("forward everything").
+With everything at its default the filter forwards everything, like stock
+`bluetooth_proxy`: every option defaults to off or −127.
 
 > **`api: batch_delay` does nothing for this traffic.** The advertisement flush
 > calls `send_message()` directly and bypasses the deferred batch queue that
@@ -34,7 +37,7 @@ resolution, payload walks) run on as little traffic as possible.
 |---|---|---|
 | 1 | `mac_blocklist` | Dropped outright, ahead of every allow rule. "This proxy does not handle this device" must not be overridable by a broader allowlist. |
 | 2 | **pre-gate** | A single computed RSSI floor — the loosest limit any rule could apply. Cheapest test there is; keeps the categoriser below from running on traffic no category would have kept. |
-| 3 | **categorise** | First hit wins: `mac_allowlist` → IRK → iBeacon → FindMy → service UUID. Everything else is `DEFAULT`. A match sets *protected*, which exempts it from stages 6 and 7. An RPA that matched **nothing** is dropped here — after categorisation, so an iBeacon, FindMy tag or allowlisted service UUID advertising from a rotating address still gets its rule (v1.7.0; before that the RPA drop ran first and silently beat them). |
+| 3 | **categorise** | First hit wins: `mac_allowlist` → IRK → iBeacon → FindMy → service UUID. Everything else is `DEFAULT`. A match sets *protected*, which exempts it from stages 6 and 7. An RPA that matched **nothing** is dropped here — after categorisation, so an iBeacon, FindMy tag or allowlisted service UUID advertising from a rotating address still gets its rule (fork v1.7.0; before that the RPA drop ran first and silently beat them). |
 | 4 | **per-category RSSI** | Each category measured against its own limit (see below). |
 | 5 | `allowlist_exclusive` | If on, the allowlist stops being a bypass and becomes the *only* way through. Off here. |
 | 6 | `drop_non_resolvable` | Non-resolvable private addresses rotate and carry no identity — not even an IRK can resolve them. Skipped for protected advertisements. |
@@ -54,7 +57,7 @@ unidentifiable device identifiable. This is where most of the 56–66% goes.
 
 ## Every option
 
-Defaults are the fork's, not this fleet's. What this fleet sets is in the last
+Defaults are the component's, not this fleet's. What this fleet sets is in the last
 column — read `common/ble-proxy.yaml` for the reasoning, it is heavily commented.
 
 ### Distance
@@ -89,7 +92,7 @@ upgrade which sets nothing reproduces the old single-threshold behaviour exactly
 | `name_blocklist` | `[]` | unset | Case-insensitive substring match on the local name. |
 | `allow_homekit` | `true` | `true` | HomeKit accessories advertise under Apple's company id with subtype `0x06`, so the blocklist above would silently kill every one — and unlike phones they have no IRK to rescue them. |
 | `allow_findmy` | `false` | **`{rssi: -85}`** | AirTags and licensed third-party tags: Apple company id, subtype `0x12`, random static address. There is **no per-accessory scoping** — the advertisement carries nothing a proxy could match on — so every FindMy tag in range comes through. −85 bounds that below the fleet threshold rather than the floor. |
-| `allow_ibeacon` | `false` | **`[{uuid: <ours>, major: 1, rssi: -95}]`** | iBeacon is Apple subtype `0x02`, so `0x004C` drops every one — and `allow_homekit` does not rescue them. Each rule takes any of `uuid`, `major`, `minor` plus an `rssi`; an advert must match **every** field a rule lists, and the most specific rule wins. Scope by **`uuid`** (v1.7.0+): `major: 1` alone matches *any* vendor's beacon left on its defaults, from anybody's house. |
+| `allow_ibeacon` | `false` | **`[{uuid: <ours>, major: 1, rssi: -95}]`** | iBeacon is Apple subtype `0x02`, so `0x004C` drops every one — and `allow_homekit` does not rescue them. Each rule takes any of `uuid`, `major`, `minor` plus an `rssi`; an advert must match **every** field a rule lists, and the most specific rule wins. Scope by **`uuid`** (since fork v1.7.0): `major: 1` alone matches *any* vendor's beacon left on its defaults, from anybody's house. |
 | `service_uuid_allowlist` | `[]` | 5 entries | See below. |
 
 ### `service_uuid_allowlist` — the pairing escape hatch
